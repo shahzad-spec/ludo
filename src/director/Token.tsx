@@ -13,12 +13,14 @@
  * Data-driven: rendered for every token in state.tokens (Scene maps them), so a
  * 2-player game naturally shows 8 tokens, 3-player shows 12.
  */
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useEffect, useState } from 'react';
 import type { Group } from 'three';
 import { useGame } from '../store/useGame';
 import { useUI } from '../store/uiStore';
+import { bus } from '../bus/events';
 import { positionToVector3, TOKEN_Y } from './config/boardGeometry';
 import { Y } from './config/renderLayers';
+import { createHopTimeline } from './anim/tokenHop';
 import { progressToPosition, BASE } from '../oracle/board/track';
 import type { Color, Position } from '../oracle/board/track';
 import type { Token as TokenData } from '../oracle/types';
@@ -79,6 +81,30 @@ export function Token({ tokenId }: { tokenId: string }) {
     return { world: base, stackOffset: offset };
   }, [token, allTokens, tokenId]);
 
+  // Animation: when TOKEN_MOVED fires for this token, hop along the path.
+  // During animation, suppress the state-derived position (GSAP controls it).
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const unsub = bus.on('TOKEN_MOVED', (event) => {
+      if (!event.tokenIds.includes(tokenId) || !ref.current) return;
+      // Convert the event's path (logical Positions) to world waypoints.
+      const waypoints = event.path.map((pos) =>
+        positionToVector3(token!.color, pos, token!.slot),
+      );
+      if (waypoints.length === 0) return;
+      setIsAnimating(true);
+      const tl = createHopTimeline(ref.current, waypoints, () => {
+        setIsAnimating(false);
+        // THE auto-resolve wire: GSAP onComplete is the ONLY caller of RESOLVE_MOVE.
+        dispatch({ type: 'RESOLVE_MOVE' });
+      });
+      tl.play();
+    });
+    return unsub;
+  }, [tokenId, token, dispatch]);
+
   if (!token || !world) return null;
 
   const isMovable =
@@ -105,10 +131,16 @@ export function Token({ tokenId }: { tokenId: string }) {
   // don't z-fight and the top of the stack is visually distinct.
   const liftY = isSelected ? TOKEN_Y + 0.15 : TOKEN_Y; // selected token lifts up
 
+  // When animating, GSAP controls the group position — don't let React override.
+  // When not animating, derive position from state as before.
+  const groupX = isAnimating ? undefined : world.x + stackOffset[0];
+  const groupY = isAnimating ? undefined : liftY;
+  const groupZ = isAnimating ? undefined : world.z + stackOffset[1];
+
   return (
     <group
       ref={ref}
-      position={[world.x + stackOffset[0], liftY, world.z + stackOffset[1]]}
+      position={groupX !== undefined ? [groupX, groupY!, groupZ!] : undefined}
       onClick={(e) => {
         e.stopPropagation();
         handleClick();

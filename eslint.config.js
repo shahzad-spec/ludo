@@ -21,6 +21,7 @@ export default tseslint.config(
 
   // --- Global: forbid direct GSAP usage outside director/anim ---
   // (Trap 1 — all GSAP timelines go through useGsapTimeline; IMPLEMENTATION-PLAN-v1 §8.1.1)
+  // Applied to ALL src files, then overridden OFF for director/anim/ below.
   {
     files: ['src/**/*.{ts,tsx}'],
     rules: {
@@ -38,7 +39,6 @@ export default tseslint.config(
       ],
     },
   },
-
   // --- LAYER 1: the Oracle (pure TS, zero rendering deps) ---
   // Enforces ARCHITECTURE-v3 §1: "The Oracle knows nothing about rendering."
   {
@@ -68,12 +68,21 @@ export default tseslint.config(
   },
 
   // --- LAYER 2: the Director (R3F). Must not reach into Stage. ---
+  // NOTE: this block REPLACES the global no-restricted-imports for director files,
+  // so the gsap funnel must be repeated here (flat config doesn't merge rule values).
   {
     files: ['src/director/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
+          paths: [
+            {
+              name: 'gsap',
+              message: 'Import gsap only inside src/director/anim/. All timelines must go through the useGsapTimeline hook (IMPLEMENTATION-PLAN-v1 §8.1.1).',
+              allowTypeImports: false,
+            },
+          ],
           patterns: [
             { group: ['../stage/*', '../stage/**/*', '../../stage/**/*', '**/stage/**'], message: 'Director must not import the Stage layer (ARCHITECTURE-v3 §2). Communication is via the store + event bus only.' },
           ],
@@ -94,6 +103,15 @@ export default tseslint.config(
           ],
         },
       ],
+    },
+  },
+
+  // --- FINAL override: director/anim/ IS allowed to import gsap ---
+  // Must be LAST so it wins over the Director layer's gsap restriction.
+  {
+    files: ['src/director/anim/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': 'off',
     },
   },
 );

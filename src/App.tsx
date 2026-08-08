@@ -25,8 +25,6 @@ function ControlBar() {
   const dispatch = useGame((s) => s.dispatch);
 
   const canRoll = phase === 'IDLE';
-  const showResolveRoll = phase === 'ROLLING';
-  const showResolveMove = phase === 'ANIMATING_MOVE';
 
   return (
     <div
@@ -56,16 +54,9 @@ function ControlBar() {
       >
         Roll
       </button>
-      {showResolveRoll && (
-        <button onClick={() => dispatch({ type: 'RESOLVE_ROLL', value: diceValue ?? 1 })} style={btn(true)}>
-          ✓ Roll
-        </button>
-      )}
-      {showResolveMove && (
-        <button onClick={() => dispatch({ type: 'RESOLVE_MOVE' })} style={btn(true)}>
-          ✓ Move
-        </button>
-      )}
+      {/* RESOLVE_ROLL and RESOLVE_MOVE are now fired ONLY by GSAP onComplete.
+          No manual resolve buttons — the dice tumbles and auto-resolves,
+          tokens hop and auto-resolve. The UI is inert during animation. */}
     </div>
   );
 }

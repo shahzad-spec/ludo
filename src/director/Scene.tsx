@@ -8,6 +8,7 @@
 import { ContactShadows, Environment } from '@react-three/drei';
 import { useEffect } from 'react';
 import { Board } from './Board';
+import { Dice } from './Dice';
 import { Token } from './Token';
 import { CameraRig } from './CameraRig';
 import { useGame } from '../store/useGame';
@@ -37,6 +38,9 @@ export function Scene() {
 
       {/* The board + path tiles */}
       <Board />
+
+      {/* The 3D die (tumbles on ROLLING, auto-resolves) */}
+      <Dice />
 
       {/* Contact shadows under everything (mobile-friendly; no shadow maps) */}
       <ContactShadows
