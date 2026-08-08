@@ -59,17 +59,18 @@ describe('engine — full action cycle', () => {
     expect(r2.state.phase).toBe('SELECTING_TOKEN');
     expect(r2.state.validMoves.some((m) => m.tokenIds[0] === 'red-0')).toBe(true);
 
-    // 3. Player picks red-0.
+    // 3. Player picks red-0 → REQUEST_MOVE emits TOKEN_MOVED (with path) so the
+    //    Director can animate. Phase locks to ANIMATING_MOVE.
     const r3 = applyAction(r2.state, { type: 'REQUEST_MOVE', tokenId: 'red-0' });
     expect(r3.state.phase).toBe('ANIMATING_MOVE');
+    const movedEvent = r3.events.find((e) => e.type === 'TOKEN_MOVED');
+    expect(movedEvent).toBeDefined();
 
-    // 4. Resolve the move → token advances to progress 13, turn passes.
+    // 4. Resolve the move → token commits to progress 13, turn passes.
     const r4 = applyAction(r3.state, { type: 'RESOLVE_MOVE' });
     expect(r4.state.tokens['red-0'].progress).toBe(13);
     expect(r4.state.phase).toBe('IDLE');
     expect(r4.state.currentPlayer).toBe('green'); // rolled 3, no six → turn passes
-    const movedEvent = r4.events.find((e) => e.type === 'TOKEN_MOVED');
-    expect(movedEvent).toBeDefined();
     const turnEvent = r4.events.find((e) => e.type === 'TURN_CHANGED');
     expect(turnEvent).toMatchObject({ type: 'TURN_CHANGED', nextPlayer: 'green' });
   });

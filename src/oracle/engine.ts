@@ -107,14 +107,26 @@ function handleRequestMove(
   const move = pickMove(state, tokenId);
   if (!move) return reject(state); // not a legal selection
 
-  // We don't commit the token movement yet — that happens on RESOLVE_MOVE so
-  // the Director can animate first. But we record the chosen move and lock
-  // the phase so no second selection can occur mid-animation.
+  // Freeze the chosen move and lock the phase. We emit TOKEN_MOVED HERE (with
+  // the path) so the Director can start the hop animation. The token's progress
+  // is NOT committed yet — that happens on RESOLVE_MOVE after the animation.
+  // This avoids the deadlock: the Director needs the path to animate, and
+  // RESOLVE_MOVE is triggered by the animation's onComplete.
   const next = patch(state, {
     phase: 'ANIMATING_MOVE',
     validMoves: [{ ...move }], // freeze the single chosen move
   });
-  return { state: next, events: [] };
+  return {
+    state: next,
+    events: [
+      {
+        type: 'TOKEN_MOVED',
+        tokenIds: move.tokenIds,
+        path: move.path,
+        finalProgress: move.finalProgress,
+      },
+    ],
+  };
 }
 
 function handleResolveMove(state: GameState): ApplyResult {
@@ -125,17 +137,11 @@ function handleResolveMove(state: GameState): ApplyResult {
   const events: GameEvent[] = [];
   const tokens = { ...state.tokens };
 
-  // 1. Move the token(s). v1: single-element; v2 stacking loops over all.
-  // Single-element invariant: in v1 move.tokenIds always has length 1.
+  // 1. Commit the token movement (progress update). TOKEN_MOVED was already
+  // emitted by REQUEST_MOVE so the Director could animate; we don't re-emit it.
   const moverId = move.tokenIds[0];
   const mover = tokens[moverId];
   tokens[moverId] = applyMove(mover, move);
-  events.push({
-    type: 'TOKEN_MOVED',
-    tokenIds: move.tokenIds,
-    path: move.path,
-    finalProgress: move.finalProgress,
-  });
 
   // 2. Captures (resets victims to BASE, emits TOKEN_CAPTURED).
   let captured = false;

@@ -11,16 +11,20 @@
  * before paint, no flash). The roll itself is event-triggered via useEffect.
  */
 
-import { useRef, useEffect, useLayoutEffect } from 'react';
+import { useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import type { Group } from 'three';
 import { useGame } from '../store/useGame';
 import { createDiceRollTimeline, faceRestingRotation } from './anim/diceRoll';
+import { createDiceMaterials } from './anim/dicePips';
 
 export function Dice() {
   const phase = useGame((s) => s.state.phase);
   const diceValue = useGame((s) => s.state.dice.value);
   const dispatch = useGame((s) => s.dispatch);
   const ref = useRef<Group>(null);
+
+  // Pip materials (generated once, memoized — CanvasTexture is expensive).
+  const materials = useMemo(() => createDiceMaterials(), []);
 
   // Set resting orientation (face 1) before paint — no one-frame-wrong-face flash.
   useLayoutEffect(() => {
@@ -45,13 +49,26 @@ export function Dice() {
 
   if (phase === 'GAME_OVER') return null;
 
+  // The dice sits on a dedicated pad at the board's right edge — outside all
+  // yard plates and path tiles, never overlapping tokens.
+  const PAD_X = 9;
+  const PAD_Z = 0;
+  const DICE_Y = 0.55;
+
   return (
-    <group ref={ref} position={[6, 0.5, -6]}>
-      {/* Die body — a box. Face pips/textures come in v2; v1 is a clean white cube. */}
-      <mesh castShadow>
-        <boxGeometry args={[0.8, 0.8, 0.8]} />
-        <meshStandardMaterial color="#f8f8f8" roughness={0.3} metalness={0.1} />
+    <group>
+      {/* Dice pad — a small recessed dark square */}
+      <mesh position={[PAD_X, 0.02, PAD_Z]} receiveShadow>
+        <boxGeometry args={[2, 0.06, 2]} />
+        <meshStandardMaterial color="#2c2c2c" roughness={0.6} metalness={0.15} />
       </mesh>
+
+      {/* The die */}
+      <group ref={ref} position={[PAD_X, DICE_Y, PAD_Z]}>
+        <mesh castShadow material={materials}>
+          <boxGeometry args={[0.8, 0.8, 0.8]} />
+        </mesh>
+      </group>
     </group>
   );
 }
