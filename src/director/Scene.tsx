@@ -11,6 +11,7 @@ import { Board } from './Board';
 import { Dice } from './Dice';
 import { Token } from './Token';
 import { CameraRig } from './CameraRig';
+import { EffectManager } from './effects/EffectManager';
 import { useGame } from '../store/useGame';
 import { useUI } from '../store/uiStore';
 
@@ -55,6 +56,9 @@ export function Scene() {
       {Object.values(tokens).map((token) => (
         <Token key={token.id} tokenId={token.id} />
       ))}
+
+      {/* Particle effects (dust, sparks, confetti) spawned on bus events */}
+      <EffectManager />
     </>
   );
 }

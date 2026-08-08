@@ -124,6 +124,9 @@ function handleRequestMove(
         tokenIds: move.tokenIds,
         path: move.path,
         finalProgress: move.finalProgress,
+        isEnteringBoard: move.isEnteringBoard,
+        isEnteringHome: move.isEnteringHome,
+        isFinishing: move.isFinishing,
       },
     ],
   };

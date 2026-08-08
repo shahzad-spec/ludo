@@ -12,6 +12,8 @@
 
 import { gsap } from './gsap';
 import type { Object3D, Vector3 } from 'three';
+import { playSfx } from '../../audio/sfx';
+import { useAudio } from '../../store/audioStore';
 
 const HOP_MS = 160;
 const HOP_PEAK = 0.6; // world units up at arc apex
@@ -54,6 +56,10 @@ export function createHopTimeline(
       duration: (HOP_MS / 2) / 1000,
       ease: 'power2.in',
       onStart: () => {
+        // Per-cell tap sound (subtle, low volume)
+        const { volume, muted } = useAudio.getState();
+        playSfx('collide', volume * 0.2, muted);
+
         if (i === waypoints.length - 1) {
           // Final landing: squash + stretch
           gsap.to(token.scale, {

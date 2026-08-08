@@ -43,12 +43,22 @@ export function AudioBus() {
       }),
     );
 
-    // TOKEN_MOVED → pileMove (yard entry only: first path cell is 'base')
+    // TOKEN_MOVED → sounds based on semantic flags (not path inference)
     handlers.push(
       bus.on('TOKEN_MOVED', (e: Extract<GameEvent, { type: 'TOKEN_MOVED' }>) => {
-        if (e.path.length > 0 && e.path[0].kind === 'base') {
+        if (e.isEnteringBoard) {
           playSfx('pileMove', getVol(), getMuted());
         }
+        if (e.isFinishing) {
+          playSfx('homeWin', getVol(), getMuted());
+        }
+      }),
+    );
+
+    // TURN_CHANGED → soft UI ping (crucial for hot-seat so players look up)
+    handlers.push(
+      bus.on('TURN_CHANGED', () => {
+        playSfx('ui', getVol() * 0.4, getMuted());
       }),
     );
 

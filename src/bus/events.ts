@@ -23,6 +23,10 @@ export type GameEvent =
       tokenIds: string[]; // v1: single-element; v2 stacking: multi-element
       path: Position[]; // exact cells the Director hops through
       finalProgress: number;
+      // Semantic flags from the Move object, so Director/Audio don't have to guess.
+      isEnteringBoard: boolean;
+      isEnteringHome: boolean;
+      isFinishing: boolean;
     }
   | {
       type: 'TOKEN_CAPTURED';
