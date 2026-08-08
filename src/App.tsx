@@ -7,7 +7,9 @@
  */
 import { CanvasWrapper } from './director/CanvasWrapper';
 import { DebugHarness } from './stage/DebugHarness/DebugHarness';
+import { AudioBus } from './audio/AudioBus';
 import { useGame } from './store/useGame';
+import { useAudio } from './store/audioStore';
 
 function isDebug(): boolean {
   return (
@@ -23,6 +25,8 @@ function ControlBar() {
   const currentPlayer = useGame((s) => s.state.currentPlayer);
   const diceValue = useGame((s) => s.state.dice.value);
   const dispatch = useGame((s) => s.dispatch);
+  const muted = useAudio((s) => s.muted);
+  const toggleMute = useAudio((s) => s.toggleMute);
 
   const canRoll = phase === 'IDLE';
 
@@ -54,6 +58,13 @@ function ControlBar() {
       >
         Roll
       </button>
+      <button
+        onClick={toggleMute}
+        style={{ ...btn(true), background: '#555', width: 36 }}
+        title={muted ? 'Unmute' : 'Mute'}
+      >
+        {muted ? '🔇' : '🔊'}
+      </button>
       {/* RESOLVE_ROLL and RESOLVE_MOVE are now fired ONLY by GSAP onComplete.
           No manual resolve buttons — the dice tumbles and auto-resolves,
           tokens hop and auto-resolve. The UI is inert during animation. */}
@@ -79,6 +90,7 @@ export default function App() {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#1a1a1a' }}>
+      <AudioBus /> {/* Non-rendering subscriber; renders null */}
       <CanvasWrapper />
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
         <ControlBar />
