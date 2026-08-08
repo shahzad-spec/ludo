@@ -4,16 +4,22 @@
  * Maintains a list of active effects. On a bus event, pushes a new effect with a
  * unique key. Each effect self-removes via its onComplete callback.
  * Caps at 50 active effects to prevent memory leaks.
+ *
+ * Particle sizes tuned for visibility: 0.15–0.2 minimum, 0.5–0.8s duration.
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { bus } from '../../bus/events';
 import type { GameEvent } from '../../bus/events';
 import { ParticleBurst, Confetti } from './Particles';
-import { SHARED_TRACK_COORDS } from '../config/boardGeometry';
+import {
+  SHARED_TRACK_COORDS,
+  positionToVector3,
+} from '../config/boardGeometry';
 import { isSafeTrackCell } from '../../oracle/board/safeCells';
 import { playSfx } from '../../audio/sfx';
 import { useAudio } from '../../store/audioStore';
+import type { Color } from '../../oracle/board/track';
 
 interface ActiveEffect {
   id: string;
@@ -30,7 +36,7 @@ export function EffectManager() {
 
   const addEffect = useCallback((effect: Omit<ActiveEffect, 'id'>) => {
     setEffects((prev) => {
-      if (prev.length >= MAX_EFFECTS) return prev; // cap
+      if (prev.length >= MAX_EFFECTS) return prev;
       return [...prev, { ...effect, id: `fx-${effectId++}` }];
     });
   }, []);
@@ -45,7 +51,7 @@ export function EffectManager() {
 
     const handlers: Array<() => void> = [];
 
-    // TOKEN_CAPTURED → spark burst at the capture cell + sound
+    // TOKEN_CAPTURED → spark burst at the capture cell
     handlers.push(
       bus.on('TOKEN_CAPTURED', (e: Extract<GameEvent, { type: 'TOKEN_CAPTURED' }>) => {
         const coord = SHARED_TRACK_COORDS[e.cell];
@@ -59,25 +65,49 @@ export function EffectManager() {
       }),
     );
 
-    // TOKEN_MOVED → safe-cell shimmer + sound (check destination cell)
+    // TOKEN_MOVED → effects based on the move's semantic flags + destination
     handlers.push(
       bus.on('TOKEN_MOVED', (e: Extract<GameEvent, { type: 'TOKEN_MOVED' }>) => {
-        // Check if the destination is a safe track cell
         const lastPos = e.path[e.path.length - 1];
-        if (lastPos && lastPos.kind === 'track' && isSafeTrackCell(lastPos.cell)) {
+        if (!lastPos) return;
+
+        // Dust puff at the destination (every move, not just safe cells)
+        const destCoord = positionToVector3(
+          (e as { player?: Color }).player ?? 'red', // fallback; color not in payload
+          lastPos,
+          0,
+        );
+        addEffect({
+          type: 'dust',
+          position: [destCoord.x, 0.2, destCoord.z],
+          color: '#cccccc',
+        });
+
+        // Safe cell → gold dust + chime
+        if (lastPos.kind === 'track' && isSafeTrackCell(lastPos.cell)) {
           playSfx('safeSpot', vol(), muted());
           const coord = SHARED_TRACK_COORDS[lastPos.cell];
           if (coord) {
             addEffect({
               type: 'dust',
-              position: [coord.x, 0.15, coord.z],
+              position: [coord.x, 0.2, coord.z],
               color: '#ffd700',
             });
           }
         }
-        // Home entry sound (isEnteringHome flag)
+
+        // Home entry → rising chime
         if (e.isEnteringHome) {
           playSfx('homeWin', vol() * 0.5, muted());
+        }
+
+        // Finishing → confetti
+        if (e.isFinishing) {
+          addEffect({
+            type: 'confetti',
+            position: [0, 1.5, 0],
+            color: '#ffffff',
+          });
         }
       }),
     );
@@ -87,24 +117,9 @@ export function EffectManager() {
       bus.on('PLAYER_WON', () => {
         addEffect({
           type: 'confetti',
-          position: [0, 1, 0],
+          position: [0, 1.5, 0],
           color: '#ffffff',
         });
-      }),
-    );
-
-    // isFinishing → confetti at center (via TOKEN_MOVED flag)
-    // Already handled above via the AudioBus; here we add the visual.
-    // We re-check TOKEN_MOVED for isFinishing to add confetti.
-    handlers.push(
-      bus.on('TOKEN_MOVED', (e: Extract<GameEvent, { type: 'TOKEN_MOVED' }>) => {
-        if (e.isFinishing) {
-          addEffect({
-            type: 'confetti',
-            position: [0, 1, 0],
-            color: '#ffffff',
-          });
-        }
       }),
     );
 
@@ -128,10 +143,10 @@ export function EffectManager() {
             key={fx.id}
             position={fx.position}
             color={fx.color}
-            count={fx.type === 'sparks' ? 14 : 6}
-            speed={fx.type === 'sparks' ? 1.5 : 0.5}
-            size={fx.type === 'sparks' ? 0.08 : 0.05}
-            duration={fx.type === 'sparks' ? 0.6 : 0.3}
+            count={fx.type === 'sparks' ? 16 : 8}
+            speed={fx.type === 'sparks' ? 2 : 0.8}
+            size={fx.type === 'sparks' ? 0.15 : 0.12}
+            duration={fx.type === 'sparks' ? 0.8 : 0.5}
             onComplete={() => removeEffect(fx.id)}
           />
         );
