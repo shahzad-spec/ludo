@@ -13,10 +13,10 @@ export function CameraRig() {
       enablePan={false}
       enableDamping
       dampingFactor={0.08}
-      minPolarAngle={0.3}
-      maxPolarAngle={Math.PI / 2.2}
-      minDistance={8}
-      maxDistance={24}
+      minPolarAngle={0.15}
+      maxPolarAngle={0.9}
+      minDistance={10}
+      maxDistance={26}
       target={[0, 0, 0]}
     />
   );

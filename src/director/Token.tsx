@@ -18,6 +18,7 @@ import type { Group } from 'three';
 import { useGame } from '../store/useGame';
 import { useUI } from '../store/uiStore';
 import { positionToVector3, TOKEN_Y } from './config/boardGeometry';
+import { Y } from './config/renderLayers';
 import { progressToPosition, BASE } from '../oracle/board/track';
 import type { Color, Position } from '../oracle/board/track';
 import type { Token as TokenData } from '../oracle/types';
@@ -113,9 +114,12 @@ export function Token({ tokenId }: { tokenId: string }) {
         handleClick();
       }}
     >
-      {/* Selection ring under the token when selected or movable */}
+      {/* Selection ring at Y.RING (above tiles/overlay, no Z-fighting). */}
       {isMovable && (
-        <mesh position={[0, -0.14, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh
+          position={[0, Y.RING - liftY, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
           <ringGeometry args={[0.34, 0.44, 24]} />
           <meshStandardMaterial
             color={isSelected ? '#ffffff' : '#ffd700'}
@@ -123,6 +127,8 @@ export function Token({ tokenId }: { tokenId: string }) {
             emissiveIntensity={0.6}
             transparent
             opacity={0.8}
+            polygonOffset
+            polygonOffsetFactor={-1}
           />
         </mesh>
       )}

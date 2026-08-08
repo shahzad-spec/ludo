@@ -15,7 +15,7 @@ export function CanvasWrapper() {
     <Canvas
       shadows={false}
       dpr={[1, 2]}
-      camera={{ position: [0, 18, 14], fov: 35 }}
+      camera={{ position: [0, 20, 12], fov: 32 }}
       gl={{ antialias: true }}
       onPointerMissed={() => select(null)} // click empty space → deselect
     >

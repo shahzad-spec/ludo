@@ -1,11 +1,18 @@
 /**
  * Board — the procedural minimalist Ludo board (ARCHITECTURE-v3 §7.2).
  *
- * No external model; built from R3F primitives. Premium look comes from materials
- * (wood base, matte colored tiles) + the lighting in Scene. One mesh per tile —
- * v1 doesn't need instancing yet (88 tiles is trivial).
+ * No external model; built from R3F primitives. Premium look from materials +
+ * lighting. **Z-fighting prevention:** every surface type lives at its own Y
+ * offset (renderLayers.ts); tiles are boxes with real height, overlays get
+ * polygonOffset + distinct Y. See renderLayers.test.ts for the audit.
  */
-import { SHARED_TRACK_COORDS, HOME_COORDS, YARD_COORDS, ALL_COLORS } from './config/boardGeometry';
+import {
+  SHARED_TRACK_COORDS,
+  HOME_COORDS,
+  YARD_COORDS,
+  ALL_COLORS,
+} from './config/boardGeometry';
+import { Y, TILE_SIZE } from './config/renderLayers';
 import { SAFE_TRACK_CELLS } from '../oracle/board/safeCells';
 import { ENTRY_OFFSET } from '../oracle/board/track';
 import type { Color } from '../oracle/board/track';
@@ -17,7 +24,10 @@ const COLOR_HEX: Record<Color, string> = {
   blue: '#2980b9',
 };
 
-/** A single flat tile at a position. */
+/**
+ * A single path/home tile — a box with real height, top at Y.TILE_TOP.
+ * Centered so bottom sits on the slab (position.y = H/2).
+ */
 function Tile({
   position,
   color,
@@ -28,8 +38,8 @@ function Tile({
   emissive?: string;
 }) {
   return (
-    <mesh position={position} receiveShadow>
-      <boxGeometry args={[0.92, 0.1, 0.92]} />
+    <mesh position={[position[0], TILE_SIZE.H / 2, position[2]]} receiveShadow>
+      <boxGeometry args={[TILE_SIZE.W, TILE_SIZE.H, TILE_SIZE.D]} />
       <meshStandardMaterial
         color={color ?? '#f4f1ea'}
         emissive={emissive ?? '#000000'}
@@ -44,20 +54,16 @@ function Tile({
 export function Board() {
   return (
     <group>
-      {/* Base slab — the wooden board */}
-      <mesh position={[0, -0.1, 0]} receiveShadow>
+      {/* Base slab — the wooden board. Top face at Y.SLAB_TOP (0). */}
+      <mesh position={[0, -0.15, 0]} receiveShadow>
         <boxGeometry args={[16, 0.3, 16]} />
         <meshStandardMaterial color="#3d2b1f" roughness={0.85} metalness={0} />
       </mesh>
 
-      {/* Shared loop tiles */}
+      {/* Shared loop tiles — boxes with height, top at TILE_TOP */}
       {SHARED_TRACK_COORDS.map((coord, cell) => {
         const startColor = ALL_COLORS.find((c) => ENTRY_OFFSET[c] === cell);
-        // Safe cells: the 4 colored starts (safe by being colored) + the 4 star
-        // cells (8th from each start). Stars get a distinct amber base + glow so
-        // they're clearly visible against the cream path tiles.
-        const isStarSafe =
-          SAFE_TRACK_CELLS.has(cell) && !startColor;
+        const isStarSafe = SAFE_TRACK_CELLS.has(cell) && !startColor;
         return (
           <Tile
             key={`loop-${cell}`}
@@ -66,7 +72,7 @@ export function Board() {
               startColor
                 ? COLOR_HEX[startColor]
                 : isStarSafe
-                  ? '#e6b800' // amber — clearly distinct from cream path
+                  ? '#e6b800'
                   : '#f4f1ea'
             }
             emissive={isStarSafe ? '#d4ac0d' : undefined}
@@ -85,25 +91,30 @@ export function Board() {
         )),
       )}
 
-      {/* Yard areas — a flat colored square per corner, with 4 slot markers */}
-      {ALL_COLORS.map((color) => (
-        <group key={`yard-${color}`}>
-          {/* Yard base */}
-          <mesh position={[YARD_COORDS[color][0].x, -0.05, YARD_COORDS[color][0].z]}>
-            <boxGeometry args={[4, 0.08, 4]} />
+      {/* Yard plates — translucent colored squares at Y.YARD_PLATE (own layer). */}
+      {ALL_COLORS.map((color) => {
+        const slot0 = YARD_COORDS[color][0];
+        return (
+          <mesh
+            key={`yard-${color}`}
+            position={[slot0.x, Y.YARD_PLATE, slot0.z]}
+          >
+            <boxGeometry args={[4.2, 0.04, 4.2]} />
             <meshStandardMaterial
               color={COLOR_HEX[color]}
               roughness={0.6}
               transparent
               opacity={0.35}
+              polygonOffset
+              polygonOffsetFactor={-1}
             />
           </mesh>
-        </group>
-      ))}
+        );
+      })}
 
-      {/* Center finish triangle area */}
-      <mesh position={[0, 0.01, 0]}>
-        <boxGeometry args={[2.8, 0.12, 2.8]} />
+      {/* Center finish area — sits at OVERLAY, above tiles. */}
+      <mesh position={[0, Y.OVERLAY, 0]}>
+        <boxGeometry args={[2.8, 0.06, 2.8]} />
         <meshStandardMaterial color="#2c2c2c" roughness={0.5} metalness={0.2} />
       </mesh>
     </group>
