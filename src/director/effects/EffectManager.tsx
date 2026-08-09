@@ -74,12 +74,11 @@ export function EffectManager() {
         const lastPos = e.path[e.path.length - 1];
         if (!lastPos) return;
 
-        // Destination position
-        const destCoord = positionToVector3(
-          (e as { player?: Color }).player ?? 'red',
-          lastPos,
-          0,
-        );
+        // Extract the mover's color from the token id (e.g. 'green-0' → 'green')
+        const moverColor = e.tokenIds[0]?.split('-')[0] as Color ?? 'red';
+
+        // Destination position (correct color → correct home-column coords)
+        const destCoord = positionToVector3(moverColor, lastPos, 0);
 
         // Safe cell → GOLD dust (replaces grey; don't spawn both)
         const isSafe = lastPos.kind === 'track' && isSafeTrackCell(lastPos.cell);
