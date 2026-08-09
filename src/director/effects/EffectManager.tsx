@@ -71,29 +71,29 @@ export function EffectManager() {
         const lastPos = e.path[e.path.length - 1];
         if (!lastPos) return;
 
-        // Dust puff at the destination (every move, not just safe cells)
+        // Destination position
         const destCoord = positionToVector3(
-          (e as { player?: Color }).player ?? 'red', // fallback; color not in payload
+          (e as { player?: Color }).player ?? 'red',
           lastPos,
           0,
         );
-        addEffect({
-          type: 'dust',
-          position: [destCoord.x, 0.2, destCoord.z],
-          color: '#cccccc',
-        });
 
-        // Safe cell → gold dust + chime
-        if (lastPos.kind === 'track' && isSafeTrackCell(lastPos.cell)) {
+        // Safe cell → GOLD dust (replaces grey; don't spawn both)
+        const isSafe = lastPos.kind === 'track' && isSafeTrackCell(lastPos.cell);
+        if (isSafe) {
           playSfx('safeSpot', vol(), muted());
-          const coord = SHARED_TRACK_COORDS[lastPos.cell];
-          if (coord) {
-            addEffect({
-              type: 'dust',
-              position: [coord.x, 0.2, coord.z],
-              color: '#ffd700',
-            });
-          }
+          addEffect({
+            type: 'dust',
+            position: [destCoord.x, 0.2, destCoord.z],
+            color: '#ffd700', // gold — clearly distinct from grey
+          });
+        } else {
+          // Normal landing → grey dust puff
+          addEffect({
+            type: 'dust',
+            position: [destCoord.x, 0.2, destCoord.z],
+            color: '#cccccc',
+          });
         }
 
         // Home entry → rising chime
@@ -143,10 +143,10 @@ export function EffectManager() {
             key={fx.id}
             position={fx.position}
             color={fx.color}
-            count={fx.type === 'sparks' ? 16 : 8}
-            speed={fx.type === 'sparks' ? 2 : 0.8}
-            size={fx.type === 'sparks' ? 0.15 : 0.12}
-            duration={fx.type === 'sparks' ? 0.8 : 0.5}
+            count={fx.type === 'sparks' ? 20 : 10}
+            speed={fx.type === 'sparks' ? 2.5 : 1.0}
+            size={fx.type === 'sparks' ? 0.25 : 0.15}
+            duration={fx.type === 'sparks' ? 1.0 : 0.6}
             onComplete={() => removeEffect(fx.id)}
           />
         );
