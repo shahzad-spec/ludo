@@ -9,6 +9,7 @@ import { CanvasWrapper } from './director/CanvasWrapper';
 import { DebugHarness } from './stage/DebugHarness/DebugHarness';
 import { CaptureDrama } from './stage/CaptureDrama';
 import { VictoryOverlay } from './stage/VictoryOverlay';
+import { SkinPicker } from './stage/SkinPicker';
 import { AudioBus } from './audio/AudioBus';
 import { useGame } from './store/useGame';
 import { useAudio } from './store/audioStore';
@@ -67,6 +68,7 @@ function ControlBar() {
       >
         {muted ? '🔇' : '🔊'}
       </button>
+      <SkinPicker />
       {/* RESOLVE_ROLL and RESOLVE_MOVE are now fired ONLY by GSAP onComplete.
           No manual resolve buttons — the dice tumbles and auto-resolves,
           tokens hop and auto-resolve. The UI is inert during animation. */}

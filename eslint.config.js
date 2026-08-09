@@ -106,6 +106,30 @@ export default tseslint.config(
     },
   },
 
+  // --- LAYER: theme/ — pure data only (no React/three/gsap/CSS) ---
+  // tokenSkins.ts lives here so BOTH Stage (SkinPicker) and Director (Token) can
+  // import it without violating the Stage→Director ban. Keep it dependency-free.
+  {
+    files: ['src/theme/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            { name: 'react', message: 'theme/ is pure data — no React.' },
+            { name: 'three', message: 'theme/ is pure data — no three.' },
+            { name: 'gsap', message: 'theme/ is pure data — no gsap.' },
+            { name: 'zustand', message: 'theme/ is pure data — no stores.' },
+          ],
+          patterns: [
+            { group: ['@react-three/*'], message: 'theme/ is pure data.' },
+            { group: ['*.css'], message: 'theme/ is pure data.' },
+          ],
+        },
+      ],
+    },
+  },
+
   // --- FINAL override: director/anim/ IS allowed to import gsap ---
   // Must be LAST so it wins over the Director layer's gsap restriction.
   {

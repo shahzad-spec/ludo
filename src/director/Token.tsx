@@ -20,16 +20,12 @@ import { Y } from './config/renderLayers';
 import { createHopTimeline, createGlideTimeline } from './anim/tokenHop';
 import { gsap } from './anim/gsap';
 import { winDance } from './anim/celebrationSequence';
+import { TokenModel } from './TokenSkin';
+import { useCosmetics } from '../store/cosmeticsStore';
+import { TOKEN_SKINS } from '../theme/tokenSkins';
 import { progressToPosition, BASE } from '../oracle/board/track';
 import type { Color, Position } from '../oracle/board/track';
 import type { Token as TokenData } from '../oracle/types';
-
-const COLOR_HEX: Record<Color, string> = {
-  red: '#e74c3c',
-  green: '#2ecc71',
-  yellow: '#f1c40f',
-  blue: '#3498db',
-};
 
 function posKey(color: Color, pos: Position, slot: number): string {
   switch (pos.kind) {
@@ -244,6 +240,10 @@ export function Token({ tokenId }: { tokenId: string }) {
 
   if (!token || !world) return null;
 
+  // Skin lookup from cosmeticsStore (per-device, not RulesConfig)
+  const skinId = useCosmetics.getState().skins[token.color];
+  const skin = skinId ? TOKEN_SKINS[skinId] ?? null : null;
+
   const isMovable =
     phase === 'SELECTING_TOKEN' &&
     validMoves.some((m) => m.tokenIds.includes(tokenId));
@@ -285,26 +285,13 @@ export function Token({ tokenId }: { tokenId: string }) {
         </mesh>
       )}
 
-      {/* Pawn body */}
-      <mesh castShadow position={[0, 0.2, 0]}>
-        <cylinderGeometry args={[0.28, 0.34, 0.4, 24]} />
-        <meshStandardMaterial
-          color={COLOR_HEX[token.color]}
-          roughness={0.35}
-          metalness={0.15}
-          emissive={isSelected ? '#ffffff' : '#000000'}
-          emissiveIntensity={isSelected ? 0.35 : 0}
-        />
-      </mesh>
-      <mesh castShadow position={[0, 0.52, 0]}>
-        <sphereGeometry args={[0.22, 24, 16]} />
-        <meshStandardMaterial
-          color={COLOR_HEX[token.color]}
-          roughness={0.35}
-          metalness={0.15}
-          emissive={isSelected ? '#ffffff' : '#000000'}
-          emissiveIntensity={isSelected ? 0.35 : 0}
-        />
+      {/* Token model — GLB skin or procedural pawn (from cosmeticsStore) */}
+      <TokenModel skin={skin} color={token.color} />
+
+      {/* Invisible hit-proxy cylinder — consistent click target regardless of skin shape */}
+      <mesh position={[0, 0.3, 0]}>
+        <cylinderGeometry args={[0.35, 0.35, 0.8, 8]} />
+        <meshBasicMaterial visible={false} />
       </mesh>
     </group>
   );
