@@ -19,7 +19,7 @@ import { positionToVector3, TOKEN_Y, SHARED_TRACK_COORDS, YARD_COORDS } from './
 import { Y } from './config/renderLayers';
 import { createHopTimeline } from './anim/tokenHop';
 import { gsap } from './anim/gsap';
-import { yardEntryPop, finishSpin, winDance } from './anim/celebrationSequence';
+import { winDance } from './anim/celebrationSequence';
 import { progressToPosition, BASE } from '../oracle/board/track';
 import type { Color, Position } from '../oracle/board/track';
 import type { Token as TokenData } from '../oracle/types';
@@ -98,7 +98,7 @@ export function Token({ tokenId }: { tokenId: string }) {
     ref.current.rotation.set(0, 0, 0);
   }, [world, stackOffset, liftY, isAnimating, isFlyingBack]);
 
-  // TOKEN_MOVED → hop animation, then yard-entry pop / finish spin if flagged
+  // TOKEN_MOVED → hop animation, then yard-entry pop / finish celebration if flagged
   useEffect(() => {
     if (!ref.current) return;
     const unsub = bus.on('TOKEN_MOVED', (event) => {
@@ -107,22 +107,37 @@ export function Token({ tokenId }: { tokenId: string }) {
         positionToVector3(token!.color, pos, token!.slot),
       );
       if (waypoints.length === 0) return;
+
+      // Yard entry: set scale to 0 SYNCHRONOUSLY before the hop, so the token
+      // is invisible during travel and pops on arrival (React can't override).
+      if (event.isEnteringBoard && ref.current) {
+        ref.current.scale.set(0, 0, 0);
+      }
+
       setIsAnimating(true);
       const tl = createHopTimeline(ref.current, waypoints, () => {
-        // After the hop: play celebration if flagged, then resolve.
         if (event.isFinishing) {
-          const spin = finishSpin(ref.current);
-          spin.eventCallback('onComplete', () => {
-            setIsAnimating(false);
-            dispatch({ type: 'RESOLVE_MOVE' });
+          // Finish: visible bounce + pulse (not an invisible spin on a round token)
+          const tl2 = gsap.timeline({
+            onComplete: () => {
+              setIsAnimating(false);
+              dispatch({ type: 'RESOLVE_MOVE' });
+            },
           });
-          spin.play();
+          tl2.to(ref.current!.position, { y: '+=0.6', duration: 0.2, ease: 'power2.out' })
+             .to(ref.current!.scale, { x: 1.3, y: 1.3, z: 1.3, duration: 0.2, ease: 'power2.out' }, 0)
+             .to(ref.current!.position, { y: TOKEN_Y, duration: 0.3, ease: 'bounce.out' })
+             .to(ref.current!.scale, { x: 1, y: 1, z: 1, duration: 0.3, ease: 'elastic.out(1, 0.5)' }, '-=0.2');
+          tl2.play();
         } else {
           setIsAnimating(false);
           dispatch({ type: 'RESOLVE_MOVE' });
-          // Yard-entry pop plays after resolve (doesn't block the turn)
-          if (event.isEnteringBoard) {
-            yardEntryPop(ref.current).play();
+          // Yard-entry pop: animate 0→1.15→1 elastic (scale was set to 0 above)
+          if (event.isEnteringBoard && ref.current) {
+            const pop = gsap.timeline();
+            pop.to(ref.current.scale, { x: 1.15, y: 1.15, z: 1.15, duration: 0.25, ease: 'power2.out' })
+               .to(ref.current.scale, { x: 1, y: 1, z: 1, duration: 0.3, ease: 'elastic.out(1, 0.4)' });
+            pop.play();
           }
         }
       });
