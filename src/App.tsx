@@ -7,6 +7,7 @@
  */
 import { CanvasWrapper } from './director/CanvasWrapper';
 import { DebugHarness } from './stage/DebugHarness/DebugHarness';
+import { CaptureDrama } from './stage/CaptureDrama';
 import { AudioBus } from './audio/AudioBus';
 import { useGame } from './store/useGame';
 import { useAudio } from './store/audioStore';
@@ -91,6 +92,7 @@ export default function App() {
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#1a1a1a' }}>
       <AudioBus /> {/* Non-rendering subscriber; renders null */}
+      <CaptureDrama /> {/* DOM overlays: screen flash + "Capture!" popup */}
       <CanvasWrapper />
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
         <ControlBar />

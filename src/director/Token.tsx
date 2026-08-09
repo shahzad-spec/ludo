@@ -18,9 +18,10 @@ import type { Group } from 'three';
 import { useGame } from '../store/useGame';
 import { useUI } from '../store/uiStore';
 import { bus } from '../bus/events';
-import { positionToVector3, TOKEN_Y } from './config/boardGeometry';
+import { positionToVector3, TOKEN_Y, SHARED_TRACK_COORDS, YARD_COORDS } from './config/boardGeometry';
 import { Y } from './config/renderLayers';
 import { createHopTimeline } from './anim/tokenHop';
+import { victimFlyBack, attackerBounce } from './anim/captureSequence';
 import { progressToPosition, BASE } from '../oracle/board/track';
 import type { Color, Position } from '../oracle/board/track';
 import type { Token as TokenData } from '../oracle/types';
@@ -104,6 +105,35 @@ export function Token({ tokenId }: { tokenId: string }) {
     });
     return unsub;
   }, [tokenId, token, dispatch]);
+
+  // Capture: when this token is the victim, play the fly-back arc.
+  // When it's the attacker, play a victory bounce.
+  useEffect(() => {
+    if (!ref.current) return;
+    const unsub = bus.on('TOKEN_CAPTURED', (event) => {
+      if (!ref.current || !token) return;
+      if (event.victimId === tokenId) {
+        // Victim: fly back to yard
+        setIsAnimating(true);
+        const captureCellCoord = SHARED_TRACK_COORDS[event.cell];
+        const yardCoord = YARD_COORDS[token.color][token.slot];
+        if (!captureCellCoord || !yardCoord) return;
+        const tl = victimFlyBack(
+          ref.current,
+          captureCellCoord.clone(),
+          yardCoord.clone(),
+          () => {
+            setIsAnimating(false);
+          },
+        );
+        tl.play();
+      } else if (event.attackerId === tokenId) {
+        // Attacker: victory bounce
+        attackerBounce(ref.current).play();
+      }
+    });
+    return unsub;
+  }, [tokenId, token]);
 
   if (!token || !world) return null;
 
