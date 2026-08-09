@@ -91,13 +91,15 @@ export function Board() {
         )),
       )}
 
-      {/* Yard plates — translucent colored squares at Y.YARD_PLATE (own layer). */}
+      {/* Yard plates — centered on the centroid of the 4 yard slots (not slot[0]). */}
       {ALL_COLORS.map((color) => {
-        const slot0 = YARD_COORDS[color][0];
+        const slots = YARD_COORDS[color];
+        const cx = slots.reduce((s, c) => s + c.x, 0) / slots.length;
+        const cz = slots.reduce((s, c) => s + c.z, 0) / slots.length;
         return (
           <mesh
             key={`yard-${color}`}
-            position={[slot0.x, Y.YARD_PLATE, slot0.z]}
+            position={[cx, Y.YARD_PLATE, cz]}
           >
             <boxGeometry args={[4.2, 0.04, 4.2]} />
             <meshStandardMaterial

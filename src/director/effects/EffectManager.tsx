@@ -143,10 +143,10 @@ export function EffectManager() {
             key={fx.id}
             position={fx.position}
             color={fx.color}
-            count={fx.type === 'sparks' ? 20 : 10}
-            speed={fx.type === 'sparks' ? 2.5 : 1.0}
-            size={fx.type === 'sparks' ? 0.25 : 0.15}
-            duration={fx.type === 'sparks' ? 1.0 : 0.6}
+            count={fx.type === 'sparks' ? 24 : 12}
+            speed={fx.type === 'sparks' ? 3 : 1.2}
+            size={fx.type === 'sparks' ? 0.4 : 0.25}
+            duration={fx.type === 'sparks' ? 1.2 : 0.7}
             onComplete={() => removeEffect(fx.id)}
           />
         );
