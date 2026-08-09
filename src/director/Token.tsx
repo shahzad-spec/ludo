@@ -19,6 +19,7 @@ import { positionToVector3, TOKEN_Y, SHARED_TRACK_COORDS, YARD_COORDS } from './
 import { Y } from './config/renderLayers';
 import { createHopTimeline } from './anim/tokenHop';
 import { gsap } from './anim/gsap';
+import { yardEntryPop, finishSpin, winDance } from './anim/celebrationSequence';
 import { progressToPosition, BASE } from '../oracle/board/track';
 import type { Color, Position } from '../oracle/board/track';
 import type { Token as TokenData } from '../oracle/types';
@@ -92,9 +93,12 @@ export function Token({ tokenId }: { tokenId: string }) {
       liftY,
       world.z + stackOffset[1],
     );
+    // Belt-and-braces: normalize transform so no animation can leave a deformed token
+    ref.current.scale.set(1, 1, 1);
+    ref.current.rotation.set(0, 0, 0);
   }, [world, stackOffset, liftY, isAnimating, isFlyingBack]);
 
-  // TOKEN_MOVED → hop animation
+  // TOKEN_MOVED → hop animation, then yard-entry pop / finish spin if flagged
   useEffect(() => {
     if (!ref.current) return;
     const unsub = bus.on('TOKEN_MOVED', (event) => {
@@ -105,8 +109,22 @@ export function Token({ tokenId }: { tokenId: string }) {
       if (waypoints.length === 0) return;
       setIsAnimating(true);
       const tl = createHopTimeline(ref.current, waypoints, () => {
-        setIsAnimating(false);
-        dispatch({ type: 'RESOLVE_MOVE' });
+        // After the hop: play celebration if flagged, then resolve.
+        if (event.isFinishing) {
+          const spin = finishSpin(ref.current);
+          spin.eventCallback('onComplete', () => {
+            setIsAnimating(false);
+            dispatch({ type: 'RESOLVE_MOVE' });
+          });
+          spin.play();
+        } else {
+          setIsAnimating(false);
+          dispatch({ type: 'RESOLVE_MOVE' });
+          // Yard-entry pop plays after resolve (doesn't block the turn)
+          if (event.isEnteringBoard) {
+            yardEntryPop(ref.current).play();
+          }
+        }
       });
       tl.play();
     });
@@ -132,8 +150,11 @@ export function Token({ tokenId }: { tokenId: string }) {
 
         const tl = gsap.timeline({
           onComplete: () => {
-            setIsFlyingBack(false); // Hand control back to React (snaps to yard)
-            gsap.globalTimeline.timeScale(1); // Restore slow-mo exactly when fly-back ends
+            // Reset dramatic transforms before handing control back to React
+            ref.current?.scale.set(1, 1, 1);
+            ref.current?.rotation.set(0, 0, 0);
+            setIsFlyingBack(false);
+            gsap.globalTimeline.timeScale(1);
           },
         });
 
@@ -171,6 +192,19 @@ export function Token({ tokenId }: { tokenId: string }) {
           .to(ref.current.scale, { x: 1.15, y: 0.85, z: 1.15, duration: 0.1, ease: 'sine.out' }) // Impact squash
           .to(ref.current.scale, { x: 1, y: 1, z: 1, duration: 0.2, ease: 'elastic.out(1, 0.5)' }); // Recover
         tl.play();
+      }
+    });
+    return unsub;
+  }, [tokenId, token]);
+
+  // PLAYER_WON → winner's tokens do a victory dance (staggered)
+  useEffect(() => {
+    if (!ref.current) return;
+    const unsub = bus.on('PLAYER_WON', (event) => {
+      if (!ref.current || !token) return;
+      if (token.color === event.player) {
+        // Stagger by slot so the 4 tokens dance in sequence
+        winDance(ref.current, token.slot * 0.15).play();
       }
     });
     return unsub;

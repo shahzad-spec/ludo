@@ -8,6 +8,7 @@
 import { CanvasWrapper } from './director/CanvasWrapper';
 import { DebugHarness } from './stage/DebugHarness/DebugHarness';
 import { CaptureDrama } from './stage/CaptureDrama';
+import { VictoryOverlay } from './stage/VictoryOverlay';
 import { AudioBus } from './audio/AudioBus';
 import { useGame } from './store/useGame';
 import { useAudio } from './store/audioStore';
@@ -93,6 +94,7 @@ export default function App() {
     <div style={{ position: 'fixed', inset: 0, background: '#1a1a1a' }}>
       <AudioBus /> {/* Non-rendering subscriber; renders null */}
       <CaptureDrama /> {/* DOM overlays: screen flash + "Capture!" popup */}
+      <VictoryOverlay /> {/* DOM overlay: trophy + "Play Again" on PLAYER_WON */}
       <CanvasWrapper />
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
         <ControlBar />
