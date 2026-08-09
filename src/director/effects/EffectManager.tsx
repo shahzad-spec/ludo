@@ -12,7 +12,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { bus } from '../../bus/events';
 import type { GameEvent } from '../../bus/events';
 import { ParticleBurst, Confetti } from './Particles';
-import { withSlowMo } from '../anim/captureSequence';
+import { gsap } from '../anim/gsap';
 import {
   SHARED_TRACK_COORDS,
   positionToVector3,
@@ -52,11 +52,11 @@ export function EffectManager() {
 
     const handlers: Array<() => void> = [];
 
-    // TOKEN_CAPTURED → slow-mo + spark burst at the capture cell
+    // TOKEN_CAPTURED → slow-mo (restored by Token.tsx fly-back onComplete) + sparks
     handlers.push(
       bus.on('TOKEN_CAPTURED', (e: Extract<GameEvent, { type: 'TOKEN_CAPTURED' }>) => {
-        // Slow-mo: 0.3x for 1.2s real time, then restore
-        withSlowMo(1.2, () => {});
+        // Slow-mo: set to 0.3x. The victim token's fly-back onComplete restores to 1.0.
+        gsap.globalTimeline.timeScale(0.3);
         const coord = SHARED_TRACK_COORDS[e.cell];
         if (coord) {
           addEffect({

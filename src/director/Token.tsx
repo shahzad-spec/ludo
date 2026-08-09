@@ -1,18 +1,15 @@
 /**
  * Token — a single game piece (ARCHITECTURE-v3 §7.2).
  *
- * Subscribes narrowly to its own token via the store, computes its world position
- * from the logical Position (the Position→Vector3 boundary), and renders a beveled
- * pawn. Phase 2: instant teleport on state change (no animation). Phase 3 adds the
- * GSAP hop timeline driven by the TOKEN_MOVED event.
+ * Position control: IMPERATIVE. The <group> has NO position prop. Instead, a
+ * useEffect syncs the group's position to the state-derived world coordinate
+ * ONLY when GSAP is not animating (isAnimating || isFlyingBack). This prevents
+ * the React-vs-GSAP conflict where React snaps a captured token to the yard
+ * before GSAP can animate the fly-back.
  *
- * Stacking: when multiple tokens share a cell, each is offset into a small cluster
- * so all are visible and individually clickable. The offset is computed from the
- * token's index among co-located tokens (same logical Position).
- *
- * Data-driven: rendered for every token in state.tokens (Scene maps them), so a
- * 2-player game naturally shows 8 tokens, 3-player shows 12.
+ * Data-driven: rendered for every token in state.tokens (Scene maps them).
  */
+
 import { useRef, useMemo, useEffect, useState } from 'react';
 import type { Group } from 'three';
 import { useGame } from '../store/useGame';
@@ -21,7 +18,7 @@ import { bus } from '../bus/events';
 import { positionToVector3, TOKEN_Y, SHARED_TRACK_COORDS, YARD_COORDS } from './config/boardGeometry';
 import { Y } from './config/renderLayers';
 import { createHopTimeline } from './anim/tokenHop';
-import { victimFlyBack, attackerBounce } from './anim/captureSequence';
+import { gsap } from './anim/gsap';
 import { progressToPosition, BASE } from '../oracle/board/track';
 import type { Color, Position } from '../oracle/board/track';
 import type { Token as TokenData } from '../oracle/types';
@@ -33,7 +30,6 @@ const COLOR_HEX: Record<Color, string> = {
   blue: '#3498db',
 };
 
-/** Position key for grouping co-located tokens (same cell/home/yard-slot). */
 function posKey(color: Color, pos: Position, slot: number): string {
   switch (pos.kind) {
     case 'base': return `yard:${color}:${slot}`;
@@ -43,10 +39,9 @@ function posKey(color: Color, pos: Position, slot: number): string {
   }
 }
 
-/** Small offsets for up to 4 stacked tokens on one cell (in cell-local XZ). */
 const STACK_OFFSETS: ReadonlyArray<readonly [number, number]> = [
-  [0, 0],       // 1 token: center
-  [-0.18, -0.18], // 2+ tokens: spread to a 2x2 cluster
+  [0, 0],
+  [-0.18, -0.18],
   [0.18, -0.18],
   [-0.18, 0.18],
   [0.18, 0.18],
@@ -62,13 +57,15 @@ export function Token({ tokenId }: { tokenId: string }) {
   const select = useUI((s) => s.select);
   const ref = useRef<Group>(null);
 
-  // Compute this token's position + its stack offset among co-located tokens.
+  // Animation flags — when true, GSAP controls position; React stays out.
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [isFlyingBack, setIsFlyingBack] = useState(false);
+
+  // Compute world position + stack offset from state.
   const { world, stackOffset } = useMemo(() => {
     if (!token) return { world: null, stackOffset: [0, 0] as [number, number] };
     const pos = progressToPosition(token.color, token.progress);
     const base = positionToVector3(token.color, pos, token.slot);
-
-    // Find all tokens sharing this exact position key; get this token's index.
     const myKey = posKey(token.color, pos, token.slot);
     const siblings = Object.values(allTokens).filter((t) => {
       const tp = progressToPosition(t.color, t.progress);
@@ -78,19 +75,30 @@ export function Token({ tokenId }: { tokenId: string }) {
     const count = siblings.length;
     const offset: [number, number] =
       count === 1 ? [0, 0] : STACK_OFFSETS[Math.min(myIndex, STACK_OFFSETS.length - 1)] as [number, number];
-
     return { world: base, stackOffset: offset };
   }, [token, allTokens, tokenId]);
 
-  // Animation: when TOKEN_MOVED fires for this token, hop along the path.
-  // During animation, suppress the state-derived position (GSAP controls it).
-  const [isAnimating, setIsAnimating] = useState(false);
+  const isSelected = selectedTokenId === tokenId;
+  const liftY = isSelected ? TOKEN_Y + 0.15 : TOKEN_Y;
 
+  // IMPERATIVE position sync: update the group's position ONLY when GSAP is not
+  // controlling it. This is the React-vs-GSAP safe pattern — no declarative
+  // position prop on the <group>, so React never fights a running tween.
+  useEffect(() => {
+    if (!ref.current || !world) return;
+    if (isAnimating || isFlyingBack) return; // GSAP has control
+    ref.current.position.set(
+      world.x + stackOffset[0],
+      liftY,
+      world.z + stackOffset[1],
+    );
+  }, [world, stackOffset, liftY, isAnimating, isFlyingBack]);
+
+  // TOKEN_MOVED → hop animation
   useEffect(() => {
     if (!ref.current) return;
     const unsub = bus.on('TOKEN_MOVED', (event) => {
-      if (!event.tokenIds.includes(tokenId) || !ref.current) return;
-      // Convert the event's path (logical Positions) to world waypoints.
+      if (!event.tokenIds.includes(tokenId) || !ref.current || !token) return;
       const waypoints = event.path.map((pos) =>
         positionToVector3(token!.color, pos, token!.slot),
       );
@@ -98,7 +106,6 @@ export function Token({ tokenId }: { tokenId: string }) {
       setIsAnimating(true);
       const tl = createHopTimeline(ref.current, waypoints, () => {
         setIsAnimating(false);
-        // THE auto-resolve wire: GSAP onComplete is the ONLY caller of RESOLVE_MOVE.
         dispatch({ type: 'RESOLVE_MOVE' });
       });
       tl.play();
@@ -106,30 +113,64 @@ export function Token({ tokenId }: { tokenId: string }) {
     return unsub;
   }, [tokenId, token, dispatch]);
 
-  // Capture: when this token is the victim, play the fly-back arc.
-  // When it's the attacker, play a victory bounce.
+  // TOKEN_CAPTURED → victim fly-back + attacker victory jump
   useEffect(() => {
     if (!ref.current) return;
     const unsub = bus.on('TOKEN_CAPTURED', (event) => {
       if (!ref.current || !token) return;
+
       if (event.victimId === tokenId) {
-        // Victim: fly back to yard
-        setIsAnimating(true);
-        const captureCellCoord = SHARED_TRACK_COORDS[event.cell];
-        const yardCoord = YARD_COORDS[token.color][token.slot];
-        if (!captureCellCoord || !yardCoord) return;
-        const tl = victimFlyBack(
-          ref.current,
-          captureCellCoord.clone(),
-          yardCoord.clone(),
-          () => {
-            setIsAnimating(false);
+        // --- VICTIM FLY-BACK ---
+        setIsFlyingBack(true);
+        const startPos = SHARED_TRACK_COORDS[event.cell];
+        const endPos = YARD_COORDS[token.color][token.slot];
+        if (!startPos || !endPos) return;
+
+        // Snap to capture cell immediately before animating
+        ref.current.position.set(startPos.x, TOKEN_Y, startPos.z);
+        ref.current.scale.set(1, 1, 1);
+
+        const tl = gsap.timeline({
+          onComplete: () => {
+            setIsFlyingBack(false); // Hand control back to React (snaps to yard)
+            gsap.globalTimeline.timeScale(1); // Restore slow-mo exactly when fly-back ends
           },
-        );
+        });
+
+        // Arc X/Z
+        tl.to(ref.current.position, {
+          x: endPos.x, z: endPos.z,
+          duration: 1.2, ease: 'power1.inOut',
+        }, 0)
+        // High arc Y (up then down via yoyo)
+        .to(ref.current.position, {
+          y: 2.5, duration: 0.6, ease: 'power2.out',
+          yoyo: true, repeat: 1,
+        }, 0)
+        // Tumble + spin (2 horizontal, 1 forward)
+        .to(ref.current.rotation, {
+          y: `+=${Math.PI * 4}`, x: `+=${Math.PI * 2}`,
+          duration: 1.2, ease: 'power1.inOut',
+        }, 0)
+        // Shrink as it flies away
+        .to(ref.current.scale, {
+          x: 0.4, y: 0.4, z: 0.4,
+          duration: 1.2, ease: 'power2.in',
+        }, 0);
+
         tl.play();
+
       } else if (event.attackerId === tokenId) {
-        // Attacker: victory bounce
-        attackerBounce(ref.current).play();
+        // --- ATTACKER VICTORY JUMP (juicier: squash → jump → stretch → fall → impact) ---
+        const tl = gsap.timeline();
+        tl.to(ref.current.scale, { x: 1.1, y: 0.8, z: 1.1, duration: 0.1, ease: 'power2.in' }) // Anticipation squash
+          .to(ref.current.position, { y: `+=0.4`, duration: 0.25, ease: 'power2.out' }, 0) // Jump up
+          .to(ref.current.scale, { x: 0.9, y: 1.3, z: 0.9, duration: 0.25, ease: 'power2.out' }, 0) // Air stretch
+          .to(ref.current.rotation, { y: `+=${Math.PI / 4}`, duration: 0.4, ease: 'power1.out' }, 0) // Swivel
+          .to(ref.current.position, { y: TOKEN_Y, duration: 0.15, ease: 'power2.in' }) // Fall
+          .to(ref.current.scale, { x: 1.15, y: 0.85, z: 1.15, duration: 0.1, ease: 'sine.out' }) // Impact squash
+          .to(ref.current.scale, { x: 1, y: 1, z: 1, duration: 0.2, ease: 'elastic.out(1, 0.5)' }); // Recover
+        tl.play();
       }
     });
     return unsub;
@@ -140,13 +181,7 @@ export function Token({ tokenId }: { tokenId: string }) {
   const isMovable =
     phase === 'SELECTING_TOKEN' &&
     validMoves.some((m) => m.tokenIds.includes(tokenId));
-  const isSelected = selectedTokenId === tokenId;
 
-  // Two-step selection in SELECTING_TOKEN:
-  //   - First click on a movable token → select (highlight), no move yet.
-  //   - Second click on the SAME selected token → confirm move (REQUEST_MOVE).
-  //   - Click a DIFFERENT movable token → switch selection to it.
-  //   - Clicking empty space (handled by Board's onPointerMissed) → deselect.
   function handleClick() {
     if (phase !== 'SELECTING_TOKEN') return;
     if (!isMovable) return;
@@ -157,26 +192,15 @@ export function Token({ tokenId }: { tokenId: string }) {
     }
   }
 
-  // Stack height: when multiple tokens share a cell, lift each slightly so they
-  // don't z-fight and the top of the stack is visually distinct.
-  const liftY = isSelected ? TOKEN_Y + 0.15 : TOKEN_Y; // selected token lifts up
-
-  // When animating, GSAP controls the group position — don't let React override.
-  // When not animating, derive position from state as before.
-  const groupX = isAnimating ? undefined : world.x + stackOffset[0];
-  const groupY = isAnimating ? undefined : liftY;
-  const groupZ = isAnimating ? undefined : world.z + stackOffset[1];
-
   return (
     <group
       ref={ref}
-      position={groupX !== undefined ? [groupX, groupY!, groupZ!] : undefined}
       onClick={(e) => {
         e.stopPropagation();
         handleClick();
       }}
     >
-      {/* Selection ring at Y.RING (above tiles/overlay, no Z-fighting). */}
+      {/* Selection ring */}
       {isMovable && (
         <mesh
           position={[0, Y.RING - liftY, 0]}
@@ -195,7 +219,7 @@ export function Token({ tokenId }: { tokenId: string }) {
         </mesh>
       )}
 
-      {/* Pawn body — a cylinder + sphere cap, beveled look via two meshes */}
+      {/* Pawn body */}
       <mesh castShadow position={[0, 0.2, 0]}>
         <cylinderGeometry args={[0.28, 0.34, 0.4, 24]} />
         <meshStandardMaterial
@@ -220,6 +244,5 @@ export function Token({ tokenId }: { tokenId: string }) {
   );
 }
 
-// Re-export for consumers
 export type { TokenData };
 export { BASE };
