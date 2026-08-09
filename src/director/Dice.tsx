@@ -21,9 +21,9 @@ const PLAYER_HEX: Record<PlayerColor, string> = {
   blue: '#4488ff',
 };
 
-/** Lerp a player color 60% toward white for a pastel tint. */
+/** Lerp a player color 30% toward white — saturated enough to read as the player's color. */
 function pastelColor(color: PlayerColor): Color {
-  return new Color(PLAYER_HEX[color]).lerp(new Color('#ffffff'), 0.6);
+  return new Color(PLAYER_HEX[color]).lerp(new Color('#ffffff'), 0.3);
 }
 
 export function Dice() {
