@@ -75,3 +75,28 @@ export function createHopTimeline(
 
   return tl;
 }
+
+/**
+ * Glide — one continuous arc over multiple cells (for home-column moves).
+ * Instead of per-cell hops, the token flies in a single smooth arc to its
+ * destination, scales with distance, and does a landing squash on arrival.
+ */
+export function createGlideTimeline(
+  group: Object3D,
+  to: Vector3,
+  cells: number,
+  onComplete?: () => void,
+): gsap.core.Timeline {
+  const duration = 0.12 * cells + 0.25; // scales with distance
+  const apex = 0.4 + 0.12 * cells; // higher arc for longer jumps
+  const baseY = to.y;
+
+  const tl = gsap.timeline({ onComplete });
+  tl.to(group.position, { x: to.x, z: to.z, duration, ease: 'power1.inOut' }, 0)
+    .to(group.position, { y: baseY + apex, duration: duration / 2, ease: 'power2.out' }, 0)
+    .to(group.position, { y: baseY, duration: duration / 2, ease: 'power2.in' }, duration / 2)
+    // landing squash + recover
+    .to(group.scale, { x: 1.15, y: 0.85, z: 1.15, duration: 0.08, ease: 'sine.out' })
+    .to(group.scale, { x: 1, y: 1, z: 1, duration: 0.2, ease: 'elastic.out(1, 0.5)' });
+  return tl;
+}
