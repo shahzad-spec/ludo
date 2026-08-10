@@ -1,14 +1,22 @@
 /**
- * TokenSkin — GLB model loader with double fallback (PLAN-PHASE-4 §5.4).
+ * TokenSkin — GLB model loader with skinned-safe cloning (PLAN-PHASE-4 §5.4).
  *
- * Auto-normalizes scale (targetHeight=0.4) and origin (feet at y=0).
- * Keeps the model's original textures (no tinting) — player color is applied
- * to a colored base ring under the character instead.
+ * Architecture:
+ *  - SkeletonUtils.clone() — correctly rebinds SkinnedMesh skeletons to cloned
+ *    bones. scene.clone(true) does NOT do this, causing skinned meshes to render
+ *    at the original bone positions (board center) while static meshes follow
+ *    the clone. This was the root cause of the "models at center" bug.
+ *  - Per-skin tuning constants (scale/offsetY/rotationY from tokenSkins.ts).
+ *    No auto-normalization — all 8 models are SkinnedMesh, so Box3 bounds
+ *    are unreliable (bind-pose, not rendered-pose).
+ *  - Wrapping <group> carries ALL transforms declaratively. The <primitive>
+ *    inside is a raw clone with no mutations — R3F owns the transforms.
  */
 
 import { Suspense, useMemo, Component, type ReactNode } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { TokenSkin } from '../theme/tokenSkins';
 import type { Color } from '../oracle/board/track';
 
@@ -19,34 +27,24 @@ const COLOR_HEX: Record<Color, string> = {
   blue: '#3498db',
 };
 
-/** The procedural pawn — extracted from Token.tsx for reuse as fallback. */
+/** The procedural pawn — fallback when no GLB skin is set. */
 export function ProceduralPawn({ color }: { color: Color }) {
   return (
     <>
       <mesh castShadow position={[0, 0.2, 0]}>
         <cylinderGeometry args={[0.28, 0.34, 0.4, 24]} />
-        <meshStandardMaterial
-          color={COLOR_HEX[color]}
-          roughness={0.35}
-          metalness={0.15}
-        />
+        <meshStandardMaterial color={COLOR_HEX[color]} roughness={0.35} metalness={0.15} />
       </mesh>
       <mesh castShadow position={[0, 0.52, 0]}>
         <sphereGeometry args={[0.22, 24, 16]} />
-        <meshStandardMaterial
-          color={COLOR_HEX[color]}
-          roughness={0.35}
-          metalness={0.15}
-        />
+        <meshStandardMaterial color={COLOR_HEX[color]} roughness={0.35} metalness={0.15} />
       </mesh>
     </>
   );
 }
 
-/** Colored base ring — the player-color indicator under character models. */
+/** Colored base puck — player-color indicator under character models. */
 function ColorBase({ color }: { color: Color }) {
-  // A short cylinder (puck) — default axis is Y (vertical), so NO rotation.
-  // The rotation=[-PI/2] was tipping it sideways (the "coin" bug).
   return (
     <mesh position={[0, 0.02, 0]}>
       <cylinderGeometry args={[0.32, 0.36, 0.04, 24]} />
@@ -61,60 +59,32 @@ function ColorBase({ color }: { color: Color }) {
   );
 }
 
-/**
- * Compute bounds from raw geometry in LOCAL space — immune to parent
- * world-position contamination. Box3.setFromObject uses matrixWorld which
- * includes the parent group's yard offset, producing wrong normalization.
- * This traverses each mesh's geometry.boundingBox transformed by its own
- * local matrix (not world matrix).
- */
-function localBounds(root: THREE.Object3D): THREE.Box3 {
-  const box = new THREE.Box3();
-  const tmp = new THREE.Box3();
-  root.updateMatrixWorld(true);
-  root.traverse((o) => {
-    const m = o as THREE.Mesh;
-    if (!(m as { isMesh?: boolean }).isMesh) return;
-    if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
-    tmp.copy(m.geometry.boundingBox!).applyMatrix4(m.matrixWorld);
-    box.union(tmp);
-  });
-  return box;
-}
-
-/** GLB skin — loads, clones, auto-normalizes to targetHeight, origin at feet. */
+/** GLB skin — SkeletonUtils.clone + wrapping-group transforms + per-skin constants. */
 function GLBSkin({ skin, color }: { skin: TokenSkin; color: Color }) {
   const { scene } = useGLTF(skin.url!);
 
-  const model = useMemo(() => {
-    const clone = scene.clone(true);
-    clone.position.set(0, 0, 0);
-
-    // Measure in LOCAL space (not world) to avoid parent contamination
-    const TARGET_HEIGHT = 0.5;
-    const b1 = localBounds(clone);
-    const size = new THREE.Vector3();
-    b1.getSize(size);
-
-    if (size.y > 0) {
-      const s = TARGET_HEIGHT / size.y;
-      clone.scale.setScalar(s);
-    }
-
-    // Re-measure after scaling, center X/Z, feet at y=0
-    const b2 = localBounds(clone);
-    const center = new THREE.Vector3();
-    b2.getCenter(center);
-    clone.position.set(-center.x, -b2.min.y, -center.z);
-
-    return clone;
-  }, [scene]);
+  // SkeletonUtils.clone — correctly rebinds SkinnedMesh skeletons to cloned bones.
+  // This is the fix for the "models at center" bug: scene.clone(true) leaves
+  // skinned meshes bound to the ORIGINAL scene's bones, so they render at
+  // the original bone positions (world origin = board center).
+  const model = useMemo(
+    () => skeletonClone(scene) as THREE.Group,
+    [scene],
+  );
 
   return (
-    <>
+    <group>
       <ColorBase color={color} />
-      <primitive object={model} rotation-y={skin.rotationY} />
-    </>
+      {/* Wrapping group carries ALL transforms declaratively.
+          R3F owns these props; <primitive> below is a raw child with no mutations. */}
+      <group
+        position={[0, skin.offsetY, 0]}
+        scale={skin.scale}
+        rotation-y={skin.rotationY}
+      >
+        <primitive object={model} />
+      </group>
+    </group>
   );
 }
 
