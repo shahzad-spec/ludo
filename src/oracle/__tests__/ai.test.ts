@@ -86,12 +86,11 @@ describe('chooseBotMove — medium picks the best move', () => {
 
 describe('chooseBotMove — medium avoids exposure', () => {
   it('prefers a safe cell over an exposed cell', () => {
-    // Cell 0 is safe (red start). Cell 5 is not.
-    // Green at progress 45 → cell (13+45)%52 = 6, so 6 is 1-6 behind cell... hmm
-    // Let's place an opponent 3 cells behind cell 5 (at cell 2).
     const state = stateWithPlacements({
-      'red-0': { color: 'red', progress: 2 }, // can advance to 5 (exposed) or to 0 (safe, wrapping)
-      'green-0': { color: 'green', progress: 41 }, // green cell = (13+41)%52 = 2; behind cell 5 by 3
+      'red-0': { color: 'red', progress: 5 },
+      'red-1': { color: 'red', progress: -1 },
+      'green-0': { color: 'green', progress: 44 },
+    });
     });
     // red at progress 2, roll 3 → progress 5, cell 5 (exposed: green is 3 behind)
     const exposedMove = makeMove({ tokenId: 'red-0', finalProgress: 5, path: [{ kind: 'track', cell: 5 }] });
