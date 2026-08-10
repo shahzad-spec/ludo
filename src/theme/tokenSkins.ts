@@ -25,9 +25,10 @@ export const TOKEN_SKINS: Record<string, TokenSkin> = {
   farmer: { id: 'farmer', label: 'Farmer', url: '/assets/models/tokens/farmer.glb', scale: 0.3, rotationY: 0 },
   wizard: { id: 'wizard', label: 'Wizard', url: '/assets/models/tokens/wizard.glb', scale: 0.3, rotationY: 0 },
   astronaut: { id: 'astronaut', label: 'Astronaut', url: '/assets/models/tokens/astronaut.glb', scale: 0.3, rotationY: 0 },
-  robot: { id: 'robot', label: 'Robot', url: null, scale: 0.3, rotationY: 0 },
-  skeleton: { id: 'skeleton', label: 'Skeleton', url: null, scale: 0.3, rotationY: 0 },
-  zombie: { id: 'zombie', label: 'Zombie', url: null, scale: 0.3, rotationY: 0 },
+  human: { id: 'human', label: 'Human', url: '/assets/models/tokens/human.glb', scale: 0.3, rotationY: 0 },
+  robot: { id: 'robot', label: 'Robot', url: '/assets/models/tokens/robot.glb', scale: 0.3, rotationY: 0 },
+  skeleton: { id: 'skeleton', label: 'Skeleton', url: '/assets/models/tokens/skeleton.glb', scale: 0.3, rotationY: 0 },
+  zombie: { id: 'zombie', label: 'Zombie', url: '/assets/models/tokens/zombie.glb', scale: 0.3, rotationY: 0 },
 };
 
 export const DEFAULT_SKINS: Record<Color, string> = {

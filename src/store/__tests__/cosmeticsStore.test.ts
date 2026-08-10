@@ -18,8 +18,8 @@ describe('cosmeticsStore — initialization', () => {
     const store = createCosmeticsStore(memoryCosmeticsAdapter(saved));
     expect(store.getState().skins.red).toBe('dinosaur');
     expect(store.getState().skins.blue).toBe('human');
-    expect(store.getState().skins.green).toBe('eagle'); // default kept
-    expect(store.getState().skins.yellow).toBe('elephant'); // default kept
+    expect(store.getState().skins.green).toBe('farmer'); // default kept
+    expect(store.getState().skins.yellow).toBe('wizard'); // default kept
   });
 });
 
@@ -27,9 +27,9 @@ describe('cosmeticsStore — setSkin', () => {
   it('persists via the adapter on valid skin id', () => {
     const adapter = memoryCosmeticsAdapter(null);
     const store = createCosmeticsStore(adapter);
-    store.getState().setSkin('red', 'eagle');
-    expect(store.getState().skins.red).toBe('eagle');
-    expect(adapter.load()?.red).toBe('eagle');
+    store.getState().setSkin('red', 'knight');
+    expect(store.getState().skins.red).toBe('knight');
+    expect(adapter.load()?.red).toBe('knight');
   });
 
   it('no-ops on unknown skin id (does not change state or persist)', () => {

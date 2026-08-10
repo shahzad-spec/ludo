@@ -1,12 +1,9 @@
 /**
  * TokenSkin — GLB model loader with double fallback (PLAN-PHASE-4 §5.4).
  *
- * If the skin has a URL: try to load the GLB via useGLTF (Suspense handles
- * loading, ErrorBoundary handles 404/corrupt → pawn).
- * If the skin has no URL or loading fails: fall back to the procedural pawn.
- *
- * The GLB is cloned and tinted with the player's color at runtime so one model
- * serves all 4 colors.
+ * Auto-normalizes scale (targetHeight=0.4) and origin (feet at y=0).
+ * Keeps the model's original textures (no tinting) — player color is applied
+ * to a colored base ring under the character instead.
  */
 
 import { Suspense, useMemo, Component, type ReactNode } from 'react';
@@ -46,26 +43,51 @@ export function ProceduralPawn({ color }: { color: Color }) {
   );
 }
 
-/** GLB skin — loads, clones, tints with player color. */
+/** Colored base ring — the player-color indicator under character models. */
+function ColorBase({ color }: { color: Color }) {
+  return (
+    <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <cylinderGeometry args={[0.32, 0.36, 0.04, 24]} />
+      <meshStandardMaterial
+        color={COLOR_HEX[color]}
+        emissive={COLOR_HEX[color]}
+        emissiveIntensity={0.2}
+        roughness={0.4}
+        metalness={0.2}
+      />
+    </mesh>
+  );
+}
+
+/** GLB skin — loads, clones, auto-normalizes to targetHeight, origin at feet. */
 function GLBSkin({ skin, color }: { skin: TokenSkin; color: Color }) {
   const { scene } = useGLTF(skin.url!);
-  const tinted = useMemo(() => {
+
+  const model = useMemo(() => {
     const clone = scene.clone(true);
-    clone.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (mesh.isMesh) {
-        const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
-        mat.color.set(COLOR_HEX[color]);
-        mat.roughness = 0.4;
-        mat.metalness = 0.1;
-        mesh.material = mat;
-      }
-    });
+    // Auto-normalize: scale to target height, set origin at feet
+    const TARGET_HEIGHT = 0.4;
+    const box = new THREE.Box3().setFromObject(clone);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+
+    if (size.y > 0) {
+      const scaleFactor = TARGET_HEIGHT / size.y;
+      clone.scale.setScalar(scaleFactor);
+    }
+
+    // Recalculate box after scaling, shift up so feet are at y=0
+    const scaledBox = new THREE.Box3().setFromObject(clone);
+    clone.position.y -= scaledBox.min.y;
+
     return clone;
-  }, [scene, color]);
+  }, [scene]);
 
   return (
-    <primitive object={tinted} scale={skin.scale} rotation-y={skin.rotationY} />
+    <>
+      <ColorBase color={color} />
+      <primitive object={model} rotation-y={skin.rotationY} />
+    </>
   );
 }
 
