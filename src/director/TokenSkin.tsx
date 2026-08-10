@@ -61,33 +61,51 @@ function ColorBase({ color }: { color: Color }) {
   );
 }
 
+/**
+ * Compute bounds from raw geometry in LOCAL space — immune to parent
+ * world-position contamination. Box3.setFromObject uses matrixWorld which
+ * includes the parent group's yard offset, producing wrong normalization.
+ * This traverses each mesh's geometry.boundingBox transformed by its own
+ * local matrix (not world matrix).
+ */
+function localBounds(root: THREE.Object3D): THREE.Box3 {
+  const box = new THREE.Box3();
+  const tmp = new THREE.Box3();
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!(m as { isMesh?: boolean }).isMesh) return;
+    if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+    tmp.copy(m.geometry.boundingBox!).applyMatrix4(m.matrixWorld);
+    box.union(tmp);
+  });
+  return box;
+}
+
 /** GLB skin — loads, clones, auto-normalizes to targetHeight, origin at feet. */
 function GLBSkin({ skin, color }: { skin: TokenSkin; color: Color }) {
   const { scene } = useGLTF(skin.url!);
 
   const model = useMemo(() => {
     const clone = scene.clone(true);
-
-    // CRITICAL: reset position to origin BEFORE measuring, so the parent
-    // group's world position doesn't contaminate the Box3 calculation.
     clone.position.set(0, 0, 0);
 
-    // Auto-normalize: scale to target height
-    const TARGET_HEIGHT = 0.4;
-    const box = new THREE.Box3().setFromObject(clone);
+    // Measure in LOCAL space (not world) to avoid parent contamination
+    const TARGET_HEIGHT = 0.5;
+    const b1 = localBounds(clone);
     const size = new THREE.Vector3();
-    box.getSize(size);
+    b1.getSize(size);
 
     if (size.y > 0) {
-      const scaleFactor = TARGET_HEIGHT / size.y;
-      clone.scale.setScalar(scaleFactor);
+      const s = TARGET_HEIGHT / size.y;
+      clone.scale.setScalar(s);
     }
 
-    // Re-measure after scaling, set origin at feet + center horizontally
-    const scaledBox = new THREE.Box3().setFromObject(clone);
+    // Re-measure after scaling, center X/Z, feet at y=0
+    const b2 = localBounds(clone);
     const center = new THREE.Vector3();
-    scaledBox.getCenter(center);
-    clone.position.set(-center.x, -scaledBox.min.y, -center.z);
+    b2.getCenter(center);
+    clone.position.set(-center.x, -b2.min.y, -center.z);
 
     return clone;
   }, [scene]);
