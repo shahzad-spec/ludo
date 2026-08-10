@@ -78,21 +78,19 @@ export function Token({ tokenId }: { tokenId: string }) {
   const isSelected = selectedTokenId === tokenId;
   const liftY = isSelected ? TOKEN_Y + 0.15 : TOKEN_Y;
 
-  // IMPERATIVE position sync: update the group's position ONLY when GSAP is not
-  // controlling it. This is the React-vs-GSAP safe pattern — no declarative
-  // position prop on the <group>, so React never fights a running tween.
+  // Position is now DECLARATIVE via the <group position={...}> prop.
+  // GSAP animations mutate ref.current.position imperatively between renders.
+  // When the animation completes and RESOLVE_MOVE commits new state, React
+  // re-renders with the updated position prop — no fighting.
+  //
+  // This effect only normalizes scale/rotation after GSAP animations complete
+  // (prevents the shrunken-token bug from capture fly-back).
   useEffect(() => {
     if (!ref.current || !world) return;
     if (isAnimating || isFlyingBack) return; // GSAP has control
-    ref.current.position.set(
-      world.x + stackOffset[0],
-      liftY,
-      world.z + stackOffset[1],
-    );
-    // Belt-and-braces: normalize transform so no animation can leave a deformed token
     ref.current.scale.set(1, 1, 1);
     ref.current.rotation.set(0, 0, 0);
-  }, [world, stackOffset, liftY, isAnimating, isFlyingBack]);
+  }, [world, isAnimating, isFlyingBack]);
 
   // TOKEN_MOVED → glide (home column) or hop (shared loop), then celebrations
   useEffect(() => {

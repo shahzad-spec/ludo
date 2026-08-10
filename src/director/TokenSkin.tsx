@@ -67,7 +67,12 @@ function GLBSkin({ skin, color }: { skin: TokenSkin; color: Color }) {
 
   const model = useMemo(() => {
     const clone = scene.clone(true);
-    // Auto-normalize: scale to target height, set origin at feet
+
+    // CRITICAL: reset position to origin BEFORE measuring, so the parent
+    // group's world position doesn't contaminate the Box3 calculation.
+    clone.position.set(0, 0, 0);
+
+    // Auto-normalize: scale to target height
     const TARGET_HEIGHT = 0.4;
     const box = new THREE.Box3().setFromObject(clone);
     const size = new THREE.Vector3();
@@ -78,9 +83,11 @@ function GLBSkin({ skin, color }: { skin: TokenSkin; color: Color }) {
       clone.scale.setScalar(scaleFactor);
     }
 
-    // Recalculate box after scaling, shift up so feet are at y=0
+    // Re-measure after scaling, set origin at feet + center horizontally
     const scaledBox = new THREE.Box3().setFromObject(clone);
-    clone.position.y -= scaledBox.min.y;
+    const center = new THREE.Vector3();
+    scaledBox.getCenter(center);
+    clone.position.set(-center.x, -scaledBox.min.y, -center.z);
 
     return clone;
   }, [scene]);
