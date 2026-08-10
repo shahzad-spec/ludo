@@ -12,7 +12,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { chooseBotMove } from '../ai';
-import type { GameState, Move } from '../types';
+import type { Move } from '../types';
 import { stateWithPlacements } from './helpers';
 import { V1_RULES } from '../config/rulesPreset';
 
