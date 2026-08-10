@@ -261,6 +261,7 @@ export function Token({ tokenId }: { tokenId: string }) {
   return (
     <group
       ref={ref}
+      position={[world.x + stackOffset[0], liftY, world.z + stackOffset[1]]}
       onClick={(e) => {
         e.stopPropagation();
         handleClick();

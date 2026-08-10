@@ -45,8 +45,10 @@ export function ProceduralPawn({ color }: { color: Color }) {
 
 /** Colored base ring — the player-color indicator under character models. */
 function ColorBase({ color }: { color: Color }) {
+  // A short cylinder (puck) — default axis is Y (vertical), so NO rotation.
+  // The rotation=[-PI/2] was tipping it sideways (the "coin" bug).
   return (
-    <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+    <mesh position={[0, 0.02, 0]}>
       <cylinderGeometry args={[0.32, 0.36, 0.04, 24]} />
       <meshStandardMaterial
         color={COLOR_HEX[color]}
