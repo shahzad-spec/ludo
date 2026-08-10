@@ -240,8 +240,8 @@ export function Token({ tokenId }: { tokenId: string }) {
 
   if (!token || !world) return null;
 
-  // Skin lookup from cosmeticsStore (per-device, not RulesConfig)
-  const skinId = useCosmetics.getState().skins[token.color];
+  // Skin lookup from cosmeticsStore — REACTIVE (re-renders when skin changes)
+  const skinId = useCosmetics((s) => s.skins[token.color]);
   const skin = skinId ? TOKEN_SKINS[skinId] ?? null : null;
 
   const isMovable =
