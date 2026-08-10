@@ -14,7 +14,6 @@ import { describe, it, expect } from 'vitest';
 import { chooseBotMove } from '../ai';
 import type { Move } from '../types';
 import { stateWithPlacements } from './helpers';
-import { V1_RULES } from '../config/rulesPreset';
 
 /** Build a minimal Move for testing. */
 function makeMove(overrides: Partial<Move> & { tokenId: string }): Move {
