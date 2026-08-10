@@ -11,6 +11,9 @@ import { CaptureDrama } from './stage/CaptureDrama';
 import { VictoryOverlay } from './stage/VictoryOverlay';
 import { SkinPicker } from './stage/SkinPicker';
 import { AudioBus } from './audio/AudioBus';
+import { BotDriver, setBotDifficulty } from './store/botDriver';
+import { useGame } from './store/useGame';
+import { soloRules } from './oracle/config/rulesPreset';
 import { useGame } from './store/useGame';
 import { useAudio } from './store/audioStore';
 
@@ -28,10 +31,13 @@ function ControlBar() {
   const currentPlayer = useGame((s) => s.state.currentPlayer);
   const diceValue = useGame((s) => s.state.dice.value);
   const dispatch = useGame((s) => s.dispatch);
+  const reset = useGame((s) => s.reset);
+  const rules = useGame((s) => s.state.rules);
   const muted = useAudio((s) => s.muted);
   const toggleMute = useAudio((s) => s.toggleMute);
 
-  const canRoll = phase === 'IDLE';
+  const isBotTurn = rules.bots.includes(currentPlayer);
+  const canRoll = phase === 'IDLE' && !isBotTurn;
 
   return (
     <div
@@ -59,7 +65,7 @@ function ControlBar() {
         onClick={() => dispatch({ type: 'REQUEST_ROLL' })}
         style={btn(canRoll)}
       >
-        Roll
+        {isBotTurn ? '🤖 Bot...' : 'Roll'}
       </button>
       <button
         onClick={toggleMute}
@@ -69,6 +75,16 @@ function ControlBar() {
         {muted ? '🔇' : '🔊'}
       </button>
       <SkinPicker />
+      <button
+        onClick={() => {
+          setBotDifficulty('medium');
+          reset(soloRules());
+        }}
+        style={{ ...btn(true), background: '#4a6' }}
+        title="Start a game vs 3 medium bots (you are red)"
+      >
+        🤖 Solo
+      </button>
       {/* RESOLVE_ROLL and RESOLVE_MOVE are now fired ONLY by GSAP onComplete.
           No manual resolve buttons — the dice tumbles and auto-resolves,
           tokens hop and auto-resolve. The UI is inert during animation. */}
@@ -95,6 +111,7 @@ export default function App() {
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#1a1a1a' }}>
       <AudioBus /> {/* Non-rendering subscriber; renders null */}
+      <BotDriver /> {/* Auto-plays for bot seats */}
       <CaptureDrama /> {/* DOM overlays: screen flash + "Capture!" popup */}
       <VictoryOverlay /> {/* DOM overlay: trophy + "Play Again" on PLAYER_WON */}
       <CanvasWrapper />
