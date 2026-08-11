@@ -14,7 +14,6 @@ import { AudioBus } from './audio/AudioBus';
 import { BotDriver, setBotDifficulty } from './store/botDriver';
 import { useGame } from './store/useGame';
 import { soloRules } from './oracle/config/rulesPreset';
-import { useGame } from './store/useGame';
 import { useAudio } from './store/audioStore';
 
 function isDebug(): boolean {
