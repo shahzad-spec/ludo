@@ -80,9 +80,19 @@ function ControlBar() {
           reset(soloRules());
         }}
         style={{ ...btn(true), background: '#4a6' }}
-        title="Start a game vs 3 medium bots (you are red)"
+        title="3 Medium bots"
       >
-        🤖 Solo
+        🤖 Med
+      </button>
+      <button
+        onClick={() => {
+          setBotDifficulty('hard');
+          reset(soloRules());
+        }}
+        style={{ ...btn(true), background: '#c46' }}
+        title="3 Hard bots (full evaluation, no search)"
+      >
+        💪 Hard
       </button>
       {/* RESOLVE_ROLL and RESOLVE_MOVE are now fired ONLY by GSAP onComplete.
           No manual resolve buttons — the dice tumbles and auto-resolves,
