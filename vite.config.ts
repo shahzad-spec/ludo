@@ -6,6 +6,9 @@ import react from '@vitejs/plugin-react';
 // Vitest auto-reads this file. The test block is ignored by `vite build`.
 export default defineConfig({
   plugins: [react()],
+  server: {
+    host: true, // expose on LAN — accessible from other devices on same network
+  },
   test: {
     // Oracle is pure TS and runs in Node — no DOM needed in Phase 0.5/1.
     // jsdom can be added later for Stage component tests.
