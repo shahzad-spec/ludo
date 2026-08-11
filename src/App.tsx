@@ -5,6 +5,7 @@
  * with a minimal control bar so the game is playable. The full HUD arrives in
  * Phase 4; this bar exists so Phase 2's gate (click token → teleport) is testable.
  */
+import { useState } from 'react';
 import { CanvasWrapper } from './director/CanvasWrapper';
 import { DebugHarness } from './stage/DebugHarness/DebugHarness';
 import { CaptureDrama } from './stage/CaptureDrama';
@@ -25,6 +26,11 @@ function isDebug(): boolean {
 }
 
 /** Minimal 3D control bar — roll/resolve buttons + phase indicator. Replaced by HUD in Phase 4. */
+const DIFFICULTIES = ['easy', 'medium', 'hard', 'pro'] as const;
+const DIFF_LABELS: Record<string, string> = {
+  easy: '🟢 Easy', medium: '🟡 Med', hard: '🟠 Hard', pro: '🔴 Pro',
+};
+
 function ControlBar() {
   const phase = useGame((s) => s.state.phase);
   const currentPlayer = useGame((s) => s.state.currentPlayer);
@@ -34,6 +40,21 @@ function ControlBar() {
   const rules = useGame((s) => s.state.rules);
   const muted = useAudio((s) => s.muted);
   const toggleMute = useAudio((s) => s.toggleMute);
+
+  // Difficulty is module-level in botDriver — track it in local state for display
+  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard' | 'pro'>('medium');
+
+  function cycleDifficulty() {
+    const idx = DIFFICULTIES.indexOf(difficulty);
+    const next = DIFFICULTIES[(idx + 1) % DIFFICULTIES.length];
+    setDifficulty(next);
+    setBotDifficulty(next);
+  }
+
+  function startSolo() {
+    setBotDifficulty(difficulty);
+    reset(soloRules());
+  }
 
   const isBotTurn = rules.bots.includes(currentPlayer);
   const canRoll = phase === 'IDLE' && !isBotTurn;
@@ -74,25 +95,20 @@ function ControlBar() {
         {muted ? '🔇' : '🔊'}
       </button>
       <SkinPicker />
+      {/* Difficulty selector — click to cycle, shows current level */}
       <button
-        onClick={() => {
-          setBotDifficulty('medium');
-          reset(soloRules());
-        }}
-        style={{ ...btn(true), background: '#4a6' }}
-        title="3 Medium bots"
+        onClick={cycleDifficulty}
+        style={{ ...btn(true), background: '#555', minWidth: 80 }}
+        title="Click to cycle difficulty (changes for next bot turn — live during game)"
       >
-        🤖 Med
+        {DIFF_LABELS[difficulty]}
       </button>
       <button
-        onClick={() => {
-          setBotDifficulty('hard');
-          reset(soloRules());
-        }}
-        style={{ ...btn(true), background: '#c46' }}
-        title="3 Hard bots (full evaluation, no search)"
+        onClick={startSolo}
+        style={{ ...btn(true), background: '#4a6' }}
+        title={`Start solo vs 3 ${difficulty} bots`}
       >
-        💪 Hard
+        🤖 Solo
       </button>
       {/* RESOLVE_ROLL and RESOLVE_MOVE are now fired ONLY by GSAP onComplete.
           No manual resolve buttons — the dice tumbles and auto-resolves,
