@@ -205,3 +205,26 @@ describe('searchBestMove — transposition table (5C-2b)', () => {
     expect(size).toBeLessThan(50_000);
   });
 });
+
+describe('searchBestMove — capture extensions (5C-2c)', () => {
+  it('extends on a capture line and respects the per-path cap (<=2)', () => {
+    const safe: Move = {
+      tokenIds: ['red-0'], path: [{ kind: 'track', cell: 7 }], finalProgress: 7,
+      isCapture: false, isEnteringHome: false, isEnteringBoard: false, isFinishing: false,
+    };
+    const capture: Move = {
+      tokenIds: ['red-0'], path: [{ kind: 'track', cell: 9 }], finalProgress: 9,
+      isCapture: true, isEnteringHome: false, isEnteringBoard: false, isFinishing: false,
+    };
+    const state = stateWithMoves(
+      { 'red-0': { color: 'red', progress: 5 }, 'green-0': { color: 'green', progress: 48 } },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN' },
+      [safe, capture],
+    );
+    searchBestMove(state, [safe, capture], 'red', { fixedDepth: 4 }, mediumPolicy);
+    const { maxExtensions } = getTTStatsForTesting();
+    console.log(`[ext] depth-4 maxExtensions=${maxExtensions}`);
+    expect(maxExtensions).toBeGreaterThan(0);
+    expect(maxExtensions).toBeLessThanOrEqual(2);
+  });
+});
