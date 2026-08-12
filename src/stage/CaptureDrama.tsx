@@ -23,8 +23,8 @@ const COLOR_HEX: Record<Color, string> = {
 export function CaptureDrama() {
   const [flash, setFlash] = useState<{ color: string; key: number } | null>(null);
   const [popup, setPopup] = useState<{ key: number } | null>(null);
-  const flashTimer = useRef<ReturnType<typeof setTimeout>>();
-  const popupTimer = useRef<ReturnType<typeof setTimeout>>();
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const popupTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const popupKey = useRef(0);
   const flashKey = useRef(0);
 

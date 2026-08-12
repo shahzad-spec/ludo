@@ -49,31 +49,36 @@ type Listener<E extends GameEvent> = (event: E) => void;
  * logging, add an emit-interceptor, not a second bus.
  */
 export class Emitter {
-  private readonly listeners: {
-    [K in GameEvent['type']]?: Set<Listener<Extract<GameEvent, { type: K }>>>;
-  } = {};
+  // Stored under the base Listener<GameEvent>: the per-event-type safety is
+  // enforced by on()'s generic signature, and emit() only ever invokes a
+  // listener with the event type it registered for (keyed by event.type).
+  // A mapped-type record with generic writes doesn't type-check (variance).
+  private readonly listeners = new Map<GameEvent['type'], Set<Listener<GameEvent>>>();
 
   on<K extends GameEvent['type']>(
     type: K,
     fn: Listener<Extract<GameEvent, { type: K }>>,
   ): () => void {
-    const set = (this.listeners[type] ??= new Set());
-    set.add(fn);
-    return () => set.delete(fn); // unsubscribe handle
+    let set = this.listeners.get(type);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(type, set);
+    }
+    const listener = fn as Listener<GameEvent>;
+    set.add(listener);
+    return () => set.delete(listener); // unsubscribe handle
   }
 
   emit(event: GameEvent): void {
-    const set = this.listeners[event.type];
+    const set = this.listeners.get(event.type);
     if (!set) return;
     // Clone before iterating: a listener might (un)subscribe during dispatch.
-    for (const fn of [...set]) fn(event as never);
+    for (const fn of [...set]) fn(event);
   }
 
   /** Remove all listeners. Used by the DebugHarness on full reset. */
   clear(): void {
-    for (const k of Object.keys(this.listeners) as GameEvent['type'][]) {
-      this.listeners[k]?.clear();
-    }
+    for (const set of this.listeners.values()) set.clear();
   }
 }
 

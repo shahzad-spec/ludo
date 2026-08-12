@@ -3,4 +3,4 @@
  * Keeps existing imports (botDriver.ts, ai.test.ts) working unchanged.
  */
 export { chooseBotMove } from './ai/policy';
-export type { BotDifficulty } from './ai/types';
+export type { BotDifficulty } from './ai/policy';

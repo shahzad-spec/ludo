@@ -8,6 +8,7 @@
 import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { BufferGeometry, Float32BufferAttribute, Mesh, BoxGeometry, MeshStandardMaterial, Group } from 'three';
+import type * as THREE from 'three';
 
 /** A burst of small particles that fly outward and fall. Self-contained physics. */
 export function ParticleBurst({

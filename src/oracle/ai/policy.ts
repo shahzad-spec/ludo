@@ -18,7 +18,7 @@ import { searchBestMove } from './search';
 export type { Difficulty as BotDifficulty } from './types';
 
 /** Base heuristic score (used by easy + medium). */
-function scoreMove(state: GameState, m: Move): number {
+function scoreMove(m: Move): number {
   let s = m.finalProgress;
   if (m.isFinishing) s += 1000;
   if (m.isCapture) s += 900;
@@ -33,7 +33,7 @@ function exposurePenaltyMedium(state: GameState, m: Move): number {
   if (!dest || dest.kind !== 'track') return 0;
   if (SAFE_TRACK_CELLS.has(dest.cell)) return 0;
 
-  const myColor = state.tokens[m.tokenId]?.color;
+  const myColor = state.tokens[m.tokenIds[0]]?.color;
   if (!myColor) return 0;
   const threatened = Object.values(state.tokens).some((t) => {
     if (t.color === myColor) return false;
@@ -69,7 +69,7 @@ export function chooseBotMove(
     for (const m of moves) {
       // Simulate the move to get the resulting state
       // For Hard, we use the evaluation of the move's outcome
-      let score = scoreMove(state, m);
+      let score = scoreMove(m);
 
       // Apply exposure penalty with riskScale
       const dest = m.path[m.path.length - 1];
@@ -103,7 +103,7 @@ export function chooseBotMove(
   // Easy + Medium: existing logic
   const scored = moves.map((m) => ({
     m,
-    s: scoreMove(state, m) - (difficulty === 'medium' ? exposurePenaltyMedium(state, m) : 0),
+    s: scoreMove(m) - (difficulty === 'medium' ? exposurePenaltyMedium(state, m) : 0),
   }));
 
   if (difficulty === 'medium') {

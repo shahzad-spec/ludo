@@ -49,7 +49,7 @@ const styles = {
     border: safe ? '2px solid gold' : '1px solid #555',
     borderRadius: 4,
     display: 'flex',
-    flexWrap: 'wrap',
+    flexWrap: 'wrap' as const,
     alignItems: 'center',
     justifyContent: 'center',
     color: '#eee',

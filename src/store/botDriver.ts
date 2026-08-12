@@ -26,7 +26,7 @@ export function setBotDifficulty(d: BotDifficulty): void {
 export function BotDriver() {
   const state = useGame((s) => s.state);
   const dispatch = useGame((s) => s.dispatch);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     // Clear any pending timer on every state change

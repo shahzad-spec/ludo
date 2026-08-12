@@ -14,7 +14,8 @@
 import type { Color } from '../board/track';
 import { BASE, progressToPosition } from '../board/track';
 import { isSafePosition } from '../board/safeCells';
-import type { GameEvent, GameState, Token } from '../types';
+import type { GameState, Token } from '../types';
+import type { GameEvent } from '../../bus/events';
 
 /** A capture to apply: the victim reset to BASE + the event to emit. */
 export interface CaptureResult {

@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { applyAction, createInitialState } from '../engine';
 import { pinnedRng } from '../rules/dice';
 import { stateWithPlacements } from './helpers';
-import { BASE } from '../board/track';
+import { BASE, type Color } from '../board/track';
 
 describe('engine — phase gating rejects out-of-phase actions', () => {
   it('REQUEST_MOVE during IDLE is rejected (no state change)', () => {
@@ -34,7 +34,7 @@ describe('engine — phase gating rejects out-of-phase actions', () => {
 
   it('any action during GAME_OVER is rejected', () => {
     const state = createInitialState();
-    const over = { ...state, phase: 'GAME_OVER' as const, winners: ['red'] };
+    const over = { ...state, phase: 'GAME_OVER' as const, winners: ['red'] as Color[] };
     const { state: next, events } = applyAction(over, { type: 'REQUEST_ROLL' });
     expect(next).toBe(over);
     expect(events).toEqual([]);

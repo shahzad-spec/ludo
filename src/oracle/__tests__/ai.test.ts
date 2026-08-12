@@ -74,7 +74,21 @@ describe('chooseBotMove — medium picks the best move', () => {
     const advanceAway = makeMove({ tokenId: 'red-0', finalProgress: 10, path: [{ kind: 'track', cell: 10 }] });
     const exitSafe = makeMove({ tokenId: 'red-1', finalProgress: 0, isEnteringBoard: true, path: [{ kind: 'track', cell: 0 }] });
     const result = chooseBotMove(state, [advanceAway, exitSafe], 'medium');
-    expect(result?.tokenId).toBe('red-1');
+    expect(result?.tokenIds[0]).toBe('red-1');
+  });
+
+  it('avoids a cell threatened by an opponent (exposure penalty decides)', () => {
+    // green-0 at progress 45 → cell (13+45)%52 = 6, threatening cells 7..12.
+    // The exposed move scores HIGHER on progress alone (9 > 8), so Medium picks
+    // the safe cell only if the exposure penalty actually fires (D-3 regression).
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 5 },
+      'green-0': { color: 'green', progress: 45 },
+    });
+    const exposed = makeMove({ tokenId: 'red-0', finalProgress: 9, path: [{ kind: 'track', cell: 9 }] });
+    const safe = makeMove({ tokenId: 'red-0', finalProgress: 8, path: [{ kind: 'track', cell: 8 }] });
+    const result = chooseBotMove(state, [exposed, safe], 'medium');
+    expect(result?.finalProgress).toBe(8);
   });
 });
 

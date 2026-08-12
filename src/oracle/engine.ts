@@ -17,7 +17,8 @@
  */
 
 import { BASE, FINISH } from './board/track';
-import type { Action, GameEvent, GameState, Move } from './types';
+import type { Action, GameState, Move } from './types';
+import type { GameEvent } from '../bus/events';
 import { rollDice } from './rules/dice';
 import { getLegalMoves } from './rules/legalMoves';
 import { applyMove } from './rules/movement';
@@ -198,7 +199,7 @@ function handleResolveMove(state: GameState): ApplyResult {
       {
         player: mover.color,
         roll: state.dice.value ?? 0,
-        tokenId: move.tokenId,
+        tokenId: move.tokenIds[0],
         capturedIds: captureIds.length ? captureIds : undefined,
       },
     ],

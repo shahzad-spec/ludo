@@ -35,6 +35,11 @@ There is substantial room for improvement, organized below into seven gated
 workstreams (WS-0 … WS-6). WS-0 (stabilization) is a hard gate: nothing else
 starts until build + lint + tests are green again.
 
+> **Update (later same day):** Phase 5B-2 completed and committed (`5f67153`,
+> 237 tests); WS-0 then executed — all P0 defects fixed, all three gates green
+> (build ✅ · lint ✅ · 238 tests ✅). Next: WS-1 remainder (5B-3 think delays,
+> 5B-4 Elo ladder).
+
 ---
 
 ## 1. Audit Method & Evidence
@@ -100,7 +105,7 @@ Status legend: ✅ done & committed · 🔶 in progress · ❌ not started · �
 | **4 — Tier 2 polish** | 6-row atmospheric catalog | ❌ | Explicitly opportunistic; workstream WS-4 |
 | **5 — Bots (Easy/Medium)** | 1 human + 3 bots to completion; sensible moves | ✅ | `ai.ts`→`ai/policy.ts`, `botDriver.ts`, Solo button; 5B-0 playtest prerequisite recorded as passed in 5B arch doc |
 | **5B-1 — Evaluation** | `evaluate.ts` + `threats.ts` + tests; 208 unmodified | ✅ | Committed (`ef6f1c1`, `92dc7e3`); 16 + 6 tests green |
-| **5B-2 — Expectimax search** | trap tests pass; p95 ≤ 100ms; lint clean | 🔶 | Code exists (`search.ts` implements amendments A/B/D correctly) but **3/7 tests fail, lint red, build broken, uncommitted**. Gate NOT passed |
+| **5B-2 — Expectimax search** | trap tests pass; p95 ≤ 100ms; lint clean | ✅ | Committed (`5f67153`). Root cause of the 3 red tests was fixture-level: `REQUEST_MOVE` picks by tokenId, ambiguous when two moves share a token — fixed by `simulate()` filtering `validMoves` to the chosen move. All 7 search tests green; depth-4 search 2.4 ms. Amendments A/B/D verified; circular dep broken via injected `opponentPolicy` |
 | **5B-3 — Wiring** | difficulty selectable; per-difficulty think delays | ◐ | Difficulty cycle button shipped (`4109832`); `botDriver` still uses flat 800/1000 ms delays instead of the planned `THINK_DELAYS` table (G-4) |
 | **5B-4 — Elo ladder** | Pro > Hard > Medium > Easy; Pro ≥ 70% vs Medium | ❌ | `ladder.test.ts` does not exist |
 | **v1.5 — Batches A/B/C** | 2p/3p UI, safeCellSet, bounce/overflow, forcedCapture, firstToN, extraTurnOnFinish, PASS, TIMEOUT | ❌ | Flags declared in `RulesConfig` (shape lock held); zero logic, zero UI. Engine support for 2p/3p exists (`colorsForPlayerCount`) but has no entry point |
@@ -113,6 +118,13 @@ half-done. v1 Definition of Done: currently NOT met — two of its checkboxes
 ---
 
 ## 3. P0 Defect Register (blocking — fixed in WS-0/WS-1)
+
+> **Status update (2026-08-12):** WS-0 executed — **D-1, D-2, D-3, D-4, D-5, D-6
+> all resolved.** Build/lint/test all green (238/238 tests, incl. a new Medium
+> threat-avoidance regression test for D-3). D-2's search-side fix was the
+> `simulate()` validMoves filter shipped in 5B-2 (`5f67153`); the remaining
+> build errors (D-1) were fixed as type/import-level changes with zero
+> behavioral impact, except D-3 which restores intended Medium behavior.
 
 | ID | Severity | Symptom | Root cause (verified) | Fix |
 |---|---|---|---|---|
