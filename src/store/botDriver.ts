@@ -2,14 +2,13 @@
  * BotDriver — auto-plays for bot seats (IMPLEMENTATION-PLAN-v1 §10 Step 2).
  *
  * Non-rendering subscriber. Mount <BotDriver/> in App.tsx.
- * When currentPlayer is in rules.bots, auto-dispatches after a think delay:
- *   IDLE → REQUEST_ROLL (after 800ms)
- *   SELECTING_TOKEN → REQUEST_MOVE(chooseBotMove(...)) (after 1000ms)
+ * When currentPlayer is in rules.bots, auto-dispatches after a think delay
+ * scaled by difficulty (Pro feels like it's thinking harder).
  *
  * Phase-gated by construction: the engine rejects out-of-phase actions,
  * so a bot can NEVER make an illegal move.
  *
- * Difficulty: reads from a module-level setting (set by the menu/Solo button).
+ * Difficulty: reads from a module-level setting (set by the UI/Solo button).
  */
 
 import { useEffect, useRef } from 'react';
@@ -22,6 +21,19 @@ let botDifficulty: BotDifficulty = 'medium';
 export function setBotDifficulty(d: BotDifficulty): void {
   botDifficulty = d;
 }
+
+export function getBotDifficulty(): BotDifficulty {
+  return botDifficulty;
+}
+
+/** Per-difficulty think delays [roll, move] in ms.
+ *  Pro computes in ≤80ms; the rest is UX so it feels like deliberate thought. */
+const THINK_DELAYS: Record<BotDifficulty, [number, number]> = {
+  easy:   [600, 900],
+  medium: [800, 1100],
+  hard:   [900, 1300],
+  pro:    [1000, 1400],
+};
 
 export function BotDriver() {
   const state = useGame((s) => s.state);
@@ -41,21 +53,19 @@ export function BotDriver() {
     if (!rules.bots.includes(currentPlayer)) return;
     if (phase === 'GAME_OVER') return;
 
+    const [rollDelay, moveDelay] = THINK_DELAYS[botDifficulty];
+
     if (phase === 'IDLE') {
-      // Bot rolls after 800ms think delay
       timerRef.current = setTimeout(() => {
         dispatch({ type: 'REQUEST_ROLL' });
-      }, 800);
+      }, rollDelay);
     } else if (phase === 'SELECTING_TOKEN') {
-      // Bot picks a move after 1000ms think delay
       timerRef.current = setTimeout(() => {
         const move = chooseBotMove(state, validMoves, botDifficulty);
         if (move) {
           dispatch({ type: 'REQUEST_MOVE', tokenId: move.tokenIds[0] });
         }
-        // If move is null (shouldn't happen — validMoves is non-empty in this phase),
-        // the engine will time out naturally. But this shouldn't occur.
-      }, 1000);
+      }, moveDelay);
     }
     // ROLLING and ANIMATING_MOVE: bot waits for the animation to auto-resolve
 
