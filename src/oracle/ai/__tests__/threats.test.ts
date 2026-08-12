@@ -1,9 +1,9 @@
 /**
- * Threat detection tests (PLAN-PHASE-5B §3.6).
+ * Threat detection tests (PLAN-PHASE-5B §3.6 + PHASE-5C §3.5 totalExposure).
  */
 
 import { describe, it, expect } from 'vitest';
-import { exposurePenalty } from '../threats';
+import { exposurePenalty, totalExposure } from '../threats';
 import { stateWithPlacements } from '../../__tests__/helpers';
 
 describe('exposurePenalty', () => {
@@ -60,5 +60,31 @@ describe('exposurePenalty', () => {
     const base = exposurePenalty(state, { kind: 'track', cell: 10 }, 'red', 1, 10);
     const scaled = exposurePenalty(state, { kind: 'track', cell: 10 }, 'red', 1.5, 10);
     expect(scaled).toBeGreaterThan(base);
+  });
+});
+
+describe('totalExposure — aggregate expected loss across my tokens', () => {
+  it('zero when my only track token is on a safe cell (even with a threatener behind)', () => {
+    // red-0 on cell 0 (red start, SAFE). green-0 cell 46 → 6 behind cell 0.
+    // Would be exposed, but safe cells cannot be captured.
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 0 },
+      'green-0': { color: 'green', progress: 33 }, // cell (13+33)%52 = 46
+    });
+    expect(totalExposure(state, 'red')).toBe(0);
+  });
+
+  it('positive when a track token of mine is exposed', () => {
+    // red-0 cell 10 (non-safe); green-0 cell 6, 4 behind → exposed.
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 },
+      'green-0': { color: 'green', progress: 45 }, // cell 6
+    });
+    expect(totalExposure(state, 'red')).toBeGreaterThan(0);
+  });
+
+  it('zero when no opponents are on the track', () => {
+    const state = stateWithPlacements({ 'red-0': { color: 'red', progress: 10 } });
+    expect(totalExposure(state, 'red')).toBe(0);
   });
 });

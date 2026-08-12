@@ -1,9 +1,13 @@
 /**
- * Feature extractor tests — ETF race model (PHASE-5C §3.2).
+ * Feature extractor tests — ETF race model + offense/defense (PHASE-5C §3.2-3.5).
  *
  * ETF (Expected Turns To Finish) is the foundation of every "who is winning"
- * judgment in the competitive bot. The hard invariant is MONOTONICITY: a token
- * closer to finishing must have a strictly lower ETF.
+ * judgment. The hard invariant is MONOTONICITY: a token closer to finishing
+ * must have a strictly lower ETF.
+ *
+ * Capture-shot geometry is the MIRROR of exposure: shots look AHEAD of me
+ * ((oppCell − myCell) ∈ 1..6); exposure looks BEHIND. Both directions are pinned
+ * here and in threats.test.ts — geometry mix-ups are this codebase's #1 bug class.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -12,8 +16,15 @@ import {
   colorETF,
   raceLeader,
   raceLead,
+  captureShots,
+  shotPressure,
+  opponentMass,
+  spread,
+  homeLoaded,
+  finishGap,
   MEAN_STEP,
   YARD_EXIT_TURNS,
+  LEADER_TAX,
 } from '../features';
 import { stateWithPlacements } from '../../__tests__/helpers';
 import { BASE, FINISH } from '../../board/track';
@@ -119,5 +130,100 @@ describe('raceLead — am I ahead of the fastest opponent', () => {
       { turnOrder: ['red'] },
     );
     expect(raceLead(state, 'red')).toBe(Infinity);
+  });
+});
+
+describe('captureShots — live capture opportunities (look AHEAD)', () => {
+  it('a shot exists when an opponent is 1\u20136 AHEAD on a non-safe cell', () => {
+    // red-0 cell 10; green-0 progress 1 → cell 14 (4 ahead). Roll 4 → capture.
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 },
+      'green-0': { color: 'green', progress: 1 },
+    });
+    const shots = captureShots(state, 'red');
+    const onGreen = shots.find((s) => s.victimId === 'green-0');
+    expect(onGreen, 'expected a shot against green-0').toBeDefined();
+    expect(onGreen!.neededRoll).toBe(4); // forward distance
+  });
+
+  it('NO shot when the opponent is BEHIND me (that is exposure, not offense)', () => {
+    // red-0 cell 10; green-0 progress 45 → cell 6 (4 behind). No capture possible.
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 },
+      'green-0': { color: 'green', progress: 45 },
+    });
+    expect(captureShots(state, 'red')).toHaveLength(0);
+  });
+
+  it('NO shot when the opponent is 7+ cells ahead (out of dice range)', () => {
+    // red-0 cell 10; green-0 progress 4 → cell 17 (7 ahead).
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 },
+      'green-0': { color: 'green', progress: 4 },
+    });
+    expect(captureShots(state, 'red')).toHaveLength(0);
+  });
+
+  it('NO shot when the opponent sits on a SAFE cell', () => {
+    // red-0 cell 10; green-0 progress 0 → cell 13 (green start, SAFE). dist 3 but safe.
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 },
+      'green-0': { color: 'green', progress: 0 },
+    });
+    expect(captureShots(state, 'red')).toHaveLength(0);
+  });
+});
+
+describe('shotPressure — expected-value-weighted capture pressure', () => {
+  it('positive when a live shot exists', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 },
+      'green-0': { color: 'green', progress: 1 }, // cell 14, 4 ahead
+    });
+    expect(shotPressure(state, 'red')).toBeGreaterThan(0);
+  });
+
+  it('zero when there are no live shots', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 },
+      'green-0': { color: 'green', progress: 45 }, // behind → no shot
+    });
+    expect(shotPressure(state, 'red')).toBe(0);
+  });
+});
+
+describe('opponentMass — leader-taxed opponent token value', () => {
+  it("weights the race leader\u2019s tokens \u00d7LEADER_TAX", () => {
+    // green is the leader; green-0 (progress 10) is worth 10 raw → 10 \u00d7 1.6 = 16.
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 0 },
+      'green-0': { color: 'green', progress: 10 },
+    });
+    expect(opponentMass(state, 'red')).toBe(10 * LEADER_TAX);
+  });
+
+  it('zero when all opponents are in the yard', () => {
+    const state = stateWithPlacements({ 'red-0': { color: 'red', progress: 10 } });
+    expect(opponentMass(state, 'red')).toBe(0);
+  });
+});
+
+describe('structural features', () => {
+  it('spread counts my tokens in play (yard and finished excluded)', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 },
+      'red-1': { color: 'red', progress: 20 },
+    });
+    expect(spread(state, 'red')).toBe(2);
+  });
+
+  it('homeLoaded counts my tokens in the home column', () => {
+    const state = stateWithPlacements({ 'red-0': { color: 'red', progress: 53 } });
+    expect(homeLoaded(state, 'red')).toBe(1);
+  });
+
+  it('finishGap = my finished count \u2212 the leader\u2019s finished count', () => {
+    const state = stateWithPlacements({ 'red-0': { color: 'red', progress: FINISH } });
+    expect(finishGap(state, 'red')).toBe(1);
   });
 });

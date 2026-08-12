@@ -43,3 +43,20 @@ export function exposurePenalty(
   }
   return penalty * scale;
 }
+
+/**
+ * Aggregate expected loss across all of `me`'s tokens on the shared loop.
+ * Reuses `exposurePenalty` geometry per token (opponents BEHIND within 1–6).
+ * Safe cells contribute 0 (handled inside exposurePenalty). Used by the
+ * competitive evaluation function (PHASE-5C §3.5).
+ */
+export function totalExposure(state: GameState, me: Color): number {
+  let total = 0;
+  for (const t of Object.values(state.tokens)) {
+    if (t.color !== me) continue;
+    if (t.progress < 0 || t.progress > 50) continue; // shared loop only
+    const cell = (ENTRY_OFFSET[me] + t.progress) % 52;
+    total += exposurePenalty(state, { kind: 'track', cell }, me, 1, t.progress);
+  }
+  return total;
+}
