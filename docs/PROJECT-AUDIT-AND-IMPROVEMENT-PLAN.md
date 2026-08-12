@@ -71,6 +71,16 @@ starts until build + lint + tests are green again.
 > branch `phase-5c-competitive-bot`, ahead of the polish pass. 5C-1a (ETF race
 > model, `features.ts`) shipped green (264 tests). Polish pass (WS-2/3/4
 > verification) resumes after 5C ships.
+>
+> **Update 6 (2026-08-13, 5C-2 milestone):** Phases 5C-1 + 5C-2 complete on
+> `phase-5c-competitive-bot`: competitive eval (ETF race model, live-shot
+> pressure, leader tax), paranoid opponent model, transposition table, capture
+> extensions, budget-honoring search. 288 tests + 5 documented skips. Two
+> findings recorded in the 5C doc: **F-1** (Hard stays on `scoreMove` — greedy
+> over a search-eval stalls games) and **F-2** (weight-sensitive P-tests gate
+> *after* tuning; every skip expires at 5C-4). Human playtest verdict on
+> uncalibrated Pro: *"quite acceptable"*. Next: 5C-3 benchmark harness → 5C-4
+> tuning (incl. advantage-scaling wiring as the pre-tuning step).
 
 ---
 
