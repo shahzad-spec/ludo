@@ -1,18 +1,20 @@
 /**
- * Bot policy — chooseBotMove for easy/medium/hard/pro (PLAN-PHASE-5B §4.4).
+ * Bot policy — chooseBotMove for easy/medium/hard/pro (PLAN-PHASE-5B §4.4 +
+ * PHASE-5C §4 paranoid model).
  *
- * Migrated from the original ai.ts. Easy + Medium logic unchanged.
- * Hard tier added (greedy over full eval, no search).
- * Pro tier delegates to search.ts (added in 5B-2).
+ * Easy + Medium logic unchanged. Hard = greedy over scoreMove + exposure (a full
+ * evaluate() inheritance is wired in 5C-2d). Pro = expectimax search with a
+ * PARANOID opponent model (5C-2a) instead of v1's tame Medium assumption.
  */
 
 import type { GameState, Move } from '../types';
 import { ENTRY_OFFSET } from '../board/track';
+import type { Color } from '../board/track';
 import { SAFE_TRACK_CELLS } from '../board/safeCells';
 import type { Difficulty } from './types';
-import { riskScale, captureTempoScale } from './evaluate';
+import { evaluate, riskScale, captureTempoScale } from './evaluate';
 import { exposurePenalty } from './threats';
-import { searchBestMove } from './search';
+import { searchBestMove, simulateMove, type OpponentPolicy } from './search';
 
 // Re-export BotDifficulty for backward compatibility
 export type { Difficulty as BotDifficulty } from './types';
@@ -43,6 +45,32 @@ function exposurePenaltyMedium(state: GameState, m: Move): number {
     return behind >= 1 && behind <= 6;
   });
   return threatened ? 300 : 0;
+}
+
+/**
+ * Paranoid opponent model (PHASE-5C §4). At opponent nodes the opponent plays the
+ * move that minimizes MY evaluation one ply later — a deterministic 1-ply
+ * best-response against me (ties broken by move order, so tests pin exact picks).
+ * Replaces Medium as Pro's default opponent model: this is what makes the search
+ * fear captures, refuse bait, and respect traps.
+ */
+export function paranoidPolicy(
+  me: Color,
+  simulate: (state: GameState, move: Move | null) => GameState,
+): OpponentPolicy {
+  return (state, moves) => {
+    if (moves.length === 0) return null;
+    let worst = moves[0];
+    let worstScore = Infinity;
+    for (const m of moves) {
+      const score = evaluate(simulate(state, m), me);
+      if (score < worstScore) {
+        worstScore = score;
+        worst = m;
+      }
+    }
+    return worst;
+  };
 }
 
 /**
@@ -88,15 +116,17 @@ export function chooseBotMove(
     return best;
   }
 
-  // Pro: expectimax search with injected opponent policy (breaks circular dep)
+  // Pro: expectimax search with a PARANOID opponent model (PHASE-5C §4). The
+  // opponent is assumed to play the move worst for me — so Pro fears captures,
+  // refuses bait, and respects traps (v1 modeled opponents as Medium, which is
+  // why it never defended or punished). 5C-2d will add per-opponent blending.
   if (difficulty === 'pro') {
     const me = state.tokens[moves[0].tokenIds[0]]?.color;
     if (!me) return moves[0];
     return searchBestMove(
       state, moves, me,
       { budgetMs: 80 },
-      // Inject Medium as the opponent model (deterministic, no rng in search)
-      (s, m) => chooseBotMove(s, m, 'medium'),
+      paranoidPolicy(me, simulateMove),
     );
   }
 

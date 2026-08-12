@@ -52,6 +52,15 @@ function simulate(state: GameState, move: Move | null): GameState {
 }
 
 /**
+ * Public simulation entry — the same zero-desync engine replay used internally,
+ * exported so the paranoid opponent model (policy.ts) can evaluate opponent
+ * replies without re-implementing simulation.
+ */
+export function simulateMove(state: GameState, move: Move | null): GameState {
+  return simulate(state, move);
+}
+
+/**
  * Simulate a dice roll using the real engine with pinned RNG.
  * () => (roll - 1) / 6 maps to Math.floor(r * 6) + 1 === roll.
  */

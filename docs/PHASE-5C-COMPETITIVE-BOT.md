@@ -89,7 +89,7 @@ live in §0.2 above; this table points to where each complaint is **fixed**.
 
 | # | Decision | Value | Rationale |
 |---|---|---|---|
-| 1 | Upgrade tiers **in place** | Easy/Medium unchanged; Hard gets the new eval (it shares `evaluate`); Pro gets new eval + paranoid model + search upgrades | Clean A/B: Medium→Hard isolates the *eval*, Hard→Pro isolates the *search*. No new UI |
+| 1 | Upgrade tiers **in place** | Easy/Medium unchanged; Hard gets the new eval via **explicit wiring in 5C-2** (code audit: Hard uses `scoreMove`, not `evaluate` — there is no automatic inheritance); Pro gets new eval + paranoid model + search upgrades | Clean A/B once Hard is wired: Medium→Hard isolates the *eval*, Hard→Pro isolates the *search*. Until then Hard benefits only from the re-anchored scales. No new UI |
 | 2 | Eval = **weighted feature vector** | `evaluate(state, me) = w · features(state, me)` with weights as a committed `const` | Makes tuning (5C-4) a data operation, not a code rewrite |
 | 3 | Opponent model | **Paranoid 1-ply best-response**, deterministic, replacing Medium as the default opponent model inside Pro's search | Medium-assumption is why Pro never respects/sets traps. Deterministic keeps tests pinned |
 | 4 | Transposition table | Bounded `Map`, **cleared per root search** | Doubles effective depth in budget; no cross-move staleness |
@@ -387,8 +387,8 @@ Unit tests (5C-1 gate):
 
 | Step | Deliverable | Est. | Gate |
 |---|---|---|---|
-| **5C-1** | `features.ts` + rewritten `evaluate.ts` (weighted) + re-anchored scales; Hard automatically inherits | ~1 d | Feature unit tests green · monotonicity invariant holds · **all 249 prior tests unmodified & green** · Medium behavior unchanged (its scoring doesn't touch `evaluate`) |
-| **5C-2** | Paranoid model + TT + capture extensions; P-1…P-8 behavioral tests | ~1 d | All P-tests green · existing search tests green · perf: p95 ≤ 120 ms desktop on benchmark position · lint + build clean |
+| **5C-1** | `features.ts` + rewritten `evaluate.ts` (weighted) + re-anchored scales | ~1 d | Feature unit tests green · monotonicity invariant holds · **all prior tests unmodified & green** (frozen: 16 `evaluate.test.ts`) · Medium behavior unchanged. ✅ Shipped (`6cc5cba`, `cedaec1`, `62244dc`, 278 tests); includes a correctness fix making `searchBestMove` honor its budget *inside* the recursion (leaf-fallback on deadline). Hard eval-inheritance **moved to 5C-2** after code audit disproved automatic inheritance |
+| **5C-2** | Paranoid model + TT + capture extensions + **Hard full-eval wiring** (simulate-based greedy over `evaluate`, with its own regression tests); P-1…P-8 behavioral tests | ~1 d | All P-tests green · existing search tests green · Hard ladder placement improves vs pre-wiring baseline · perf: p95 ≤ 120 ms desktop on benchmark position · lint + build clean |
 | **5C-3** | `tools/bot-benchmark.mjs` — placement ladder, seeded, all pairings × 200 games | ~0.5 d | Baseline report committed (`docs/reports/5C-baseline.md`): placement scores for Easy/Medium/Hard/Pro with pre-tuning weights |
 | **5C-4** | Offline weight tuning (coordinate ascent on `EVAL_WEIGHTS`, seeded tournaments, champion weights committed) | ~1 d + overnight runs | **Placement ordering holds:** Pro > Hard > Medium > Easy · Hard placement-beats Medium ≥ 55% (fixes the 18% anomaly) · Pro placement-beats Medium ≥ 65% · monotonicity invariant still holds for champion weights |
 | **5C-5** | Human playtest + feel pass | ~0.5 d | Playtest checklist: bot visibly hunts / targets leader / traps at least once per game vs Pro · **user sign-off** |
