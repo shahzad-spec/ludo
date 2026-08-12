@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { searchBestMove } from '../search';
+import { searchBestMove, getTTStatsForTesting } from '../search';
 import { chooseBotMove } from '../policy';
 import { stateWithPlacements } from '../../__tests__/helpers';
 import type { GameState, Move } from '../../types';
@@ -157,5 +157,51 @@ describe('searchBestMove — performance', () => {
     const elapsed = performance.now() - t0;
     console.log(`[perf] depth 4: ${elapsed.toFixed(1)}ms`);
     expect(elapsed).toBeLessThan(100);
+  });
+});
+
+describe('searchBestMove — transposition table (5C-2b)', () => {
+  /** Two legal-shape moves for red-0. */
+  function mv(finalProgress: number, cell: number): Move {
+    return {
+      tokenIds: ['red-0'], path: [{ kind: 'track', cell }], finalProgress,
+      isCapture: false, isEnteringHome: false, isEnteringBoard: false, isFinishing: false,
+    };
+  }
+
+  function twoTokenState(): GameState {
+    return stateWithMoves(
+      {
+        'red-0': { color: 'red', progress: 10 },
+        'green-0': { color: 'green', progress: 20 },
+        'green-1': { color: 'green', progress: 5 },
+      },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN' },
+      [mv(12, 12), mv(14, 14)],
+    );
+  }
+
+  it('TT is transparent: identical result with TT on vs off', () => {
+    const state = twoTokenState();
+    const moves = state.validMoves;
+    const on = searchBestMove(state, moves, 'red', { fixedDepth: 4 }, mediumPolicy);
+    const off = searchBestMove(state, moves, 'red', { fixedDepth: 4, tt: false }, mediumPolicy);
+    expect(on?.tokenIds[0]).toBe(off?.tokenIds[0]);
+    expect(on?.finalProgress).toBe(off?.finalProgress);
+  });
+
+  it('TT disabled → zero hits', () => {
+    const state = twoTokenState();
+    searchBestMove(state, state.validMoves, 'red', { fixedDepth: 4, tt: false }, mediumPolicy);
+    expect(getTTStatsForTesting().hits).toBe(0);
+  });
+
+  it('TT stays bounded and records its hit count (informational)', () => {
+    const state = twoTokenState();
+    searchBestMove(state, state.validMoves, 'red', { fixedDepth: 4 }, mediumPolicy);
+    const { hits, size } = getTTStatsForTesting();
+    console.log(`[tt] depth-4 hits=${hits} size=${size}`);
+    expect(hits).toBeGreaterThanOrEqual(0);
+    expect(size).toBeLessThan(50_000);
   });
 });

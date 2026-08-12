@@ -9,4 +9,7 @@ export interface SearchOptions {
   budgetMs?: number;
   /** Pin exact search depth for deterministic tests. Overrides budgetMs. */
   fixedDepth?: number;
+  /** Transposition table on/off. Default true. Tests may disable to prove the
+   *  TT is transparent (same result with and without it). */
+  tt?: boolean;
 }
