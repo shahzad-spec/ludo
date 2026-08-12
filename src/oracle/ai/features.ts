@@ -14,13 +14,31 @@ import type { GameState } from '../types';
 import { BASE, FINISH, FIRST_HOME_PROGRESS, ENTRY_OFFSET } from '../board/track';
 import type { Color } from '../board/track';
 import { SAFE_TRACK_CELLS } from '../board/safeCells';
-import { tokenValue } from './evaluate';
 
 /** Expected value of a single dice roll. */
 export const MEAN_STEP = 3.5;
 
 /** Expected rolls to exit the yard (geometric distribution, p = 1/6 → mean 6). */
 export const YARD_EXIT_TURNS = 6;
+
+/**
+ * Per-token progress value (amendment C — strictly monotonic):
+ *   Yard:      0
+ *   Track:     p + max(0, p - 43) * 2       (range 0..64)
+ *   Home col:  66 + (p - 51) * 8             (range 66..98)
+ *   Finished:  100
+ *
+ * Monotonicity: yard(0) < track(0→64) < home(66→98) < finished(100). ✓
+ *
+ * Defined here (not evaluate.ts) so the feature extractors can use it without
+ * creating an evaluate↔features import cycle; evaluate.ts re-exports it.
+ */
+export function tokenValue(progress: number): number {
+  if (progress === BASE) return 0;
+  if (progress === FINISH) return 100;
+  if (progress <= 50) return progress + Math.max(0, progress - 43) * 2;
+  return 66 + (progress - 51) * 8;
+}
 
 /**
  * Expected turns for ONE token to finish from its current progress.

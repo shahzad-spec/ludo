@@ -9,7 +9,7 @@ import type { GameState } from '../types';
 import type { Color, Position } from '../board/track';
 import { ENTRY_OFFSET } from '../board/track';
 import { SAFE_TRACK_CELLS } from '../board/safeCells';
-import { tokenValue } from './evaluate';
+import { tokenValue } from './features';
 
 /**
  * Expected loss from parking at `dest` where opponents can capture.

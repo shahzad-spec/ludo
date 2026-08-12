@@ -1,14 +1,20 @@
 /**
- * Expectimax search engine — the Pro bot's brain (PLAN-PHASE-5B §4).
+ * Expectimax search engine — the Pro bot's brain (PLAN-PHASE-5B §4 + 5C budget).
  *
  * Simulates 3-8 turns into the future using the REAL applyAction engine
- * (zero desync guarantee). Opponents are modeled as Medium policy (injected
- * via function parameter to break the circular dependency).
+ * (zero desync guarantee). Opponents are modeled as an injected policy (Medium by
+ * default) to keep branching low and to break the circular dependency with
+ * policy.ts.
  *
  * Amendments applied:
  *   A: Phase-aware node typing (IDLE → chance, SELECTING_TOKEN → max/policy)
  *   B: Null-safe simulate (turn-pass on NO_LEGAL_MOVE)
  *   D: fixedDepth option for deterministic tests
+ *
+ * 5C budget-honoring: a `shouldStop` deadline is checked at every node so Pro's
+ * search respects its wall-clock budget even with the (much richer) 5C weighted
+ * evaluation. The deadline is only active in budget mode; fixedDepth tests pass
+ * a deadline of Infinity and are bit-for-bit unchanged.
  *
  * Architecture:
  *   - simulate() uses applyAction (REQUEST_MOVE + RESOLVE_MOVE)
@@ -63,15 +69,20 @@ function simulateRoll(state: GameState, roll: number): GameState {
  *   state.phase === 'SELECTING_TOKEN' + me    → Max node
  *   state.phase === 'SELECTING_TOKEN' + opp   → Policy node
  *   terminal (GAME_OVER or depth 0)           → Leaf (evaluate)
+ *
+ * `shouldStop` (5C): once the wall-clock budget is exhausted, further nodes are
+ * evaluated as leaves instead of expanded. This keeps Pro inside its budget with
+ * the richer 5C eval. Inactive in fixedDepth mode (deadline = Infinity).
  */
 function expectimax(
   state: GameState,
   depth: number,
   me: Color,
   opponentPolicy: OpponentPolicy,
+  shouldStop: () => boolean,
 ): number {
-  // Terminal: depth exhausted or game over
-  if (depth <= 0 || state.phase === 'GAME_OVER') {
+  // Terminal: depth exhausted, game over, or budget exhausted (treat as leaf).
+  if (depth <= 0 || state.phase === 'GAME_OVER' || shouldStop()) {
     return evaluate(state, me);
   }
 
@@ -89,23 +100,23 @@ function expectimax(
           if (myMoves.length > 0) {
             let best = -Infinity;
             for (const m of myMoves) {
-              const val = expectimax(simulate(rolled, m), depth - 1, me, opponentPolicy);
+              const val = expectimax(simulate(rolled, m), depth - 1, me, opponentPolicy, shouldStop);
               if (val > best) best = val;
             }
             sum += best;
           } else {
             // Shouldn't happen (SELECTING_TOKEN implies moves exist), but safe
-            sum += expectimax(rolled, depth - 1, me, opponentPolicy);
+            sum += expectimax(rolled, depth - 1, me, opponentPolicy, shouldStop);
           }
         } else {
           // Policy node: opponent plays their modeled policy
           const oppMove = opponentPolicy(rolled, rolled.validMoves);
-          sum += expectimax(simulate(rolled, oppMove), depth - 1, me, opponentPolicy);
+          sum += expectimax(simulate(rolled, oppMove), depth - 1, me, opponentPolicy, shouldStop);
         }
       } else {
         // NO_LEGAL_MOVE → turn passed automatically by engine.
         // State is now IDLE for the next player — continue recursing.
-        sum += expectimax(rolled, depth - 1, me, opponentPolicy);
+        sum += expectimax(rolled, depth - 1, me, opponentPolicy, shouldStop);
       }
     }
     return sum / 6;
@@ -115,7 +126,7 @@ function expectimax(
   if (state.currentPlayer === me && state.validMoves.length > 0) {
     let best = -Infinity;
     for (const m of state.validMoves) {
-      const val = expectimax(simulate(state, m), depth - 1, me, opponentPolicy);
+      const val = expectimax(simulate(state, m), depth - 1, me, opponentPolicy, shouldStop);
       if (val > best) best = val;
     }
     return best;
@@ -124,7 +135,7 @@ function expectimax(
   // SELECTING_TOKEN — opponent's turn: policy node
   if (state.currentPlayer !== me && state.validMoves.length > 0) {
     const oppMove = opponentPolicy(state, state.validMoves);
-    return expectimax(simulate(state, oppMove), depth - 1, me, opponentPolicy);
+    return expectimax(simulate(state, oppMove), depth - 1, me, opponentPolicy, shouldStop);
   }
 
   // Fallback: just evaluate
@@ -157,11 +168,15 @@ export function searchBestMove(
 
   let best = moves[0];
   const t0 = useBudget ? performance.now() : 0;
+  // 5C: deadline checked at every node so the search honors its budget even with
+  // the richer evaluation. Infinity in fixedDepth mode → never stops early.
+  const deadline = useBudget ? t0 + budgetMs : Infinity;
+  const shouldStop = () => performance.now() > deadline;
 
   for (let depth = 1; depth <= maxDepth; depth++) {
     let bestScore = -Infinity;
     for (const m of moves) {
-      const score = expectimax(simulate(state, m), depth - 1, me, opponentPolicy);
+      const score = expectimax(simulate(state, m), depth - 1, me, opponentPolicy, shouldStop);
       if (score > bestScore) {
         bestScore = score;
         best = m;

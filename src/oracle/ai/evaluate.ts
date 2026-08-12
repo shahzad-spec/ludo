@@ -1,71 +1,96 @@
 /**
- * Evaluation function — full positional eval (PLAN-PHASE-5B §3.2).
+ * Competitive evaluation function (PHASE-5C §3.6).
  *
- * Amendment C: zone values are strictly monotonic (yard < track < home < finished).
- * Amendment E: riskScale (ahead → protect) + captureTempoScale (behind → gamble).
+ * Replaces v1's pure-progress eval (which bribed single-token racing — see
+ * PHASE-5C §0.2.1) with a weighted feature vector. The search engine
+ * (search.ts) is unchanged; it now optimizes a better objective. Weights are
+ * initial guesses — the offline tuning loop (5C-4) calibrates them.
+ *
+ * `tokenValue` is defined in ./features (shared by feature extractors) and
+ * re-exported here so existing `import { tokenValue } from './evaluate'` sites
+ * keep working (it never touches this module's logic now).
  */
 
+import {
+  raceLead,
+  shotPressure,
+  opponentMass,
+  spread,
+  homeLoaded,
+  finishGap,
+} from './features';
+import { totalExposure } from './threats';
 import type { GameState } from '../types';
 import type { Color } from '../board/track';
-import { FINISH, BASE } from '../board/track';
 
-/**
- * Per-token value (amendment C — strictly monotonic):
- *   Yard:      0
- *   Track:     p + max(0, p - 43) * 2       (range 0..64)
- *   Home col:  66 + h * 8                    (range 66..98)
- *   Finished:  100
- *
- * Monotonicity: yard(0) < track(0→64) < home(66→98) < finished(100). ✓
- */
-export function tokenValue(progress: number): number {
-  if (progress === BASE) return 0;
-  if (progress === FINISH) return 100;
-  if (progress <= 50) return progress + Math.max(0, progress - 43) * 2;
-  return 66 + (progress - 51) * 8;
+// Re-export so callers can keep importing tokenValue from './evaluate'.
+export { tokenValue } from './features';
+
+/** Tunable feature weights (PHASE-5C §3.6). Initial guesses — tuned in 5C-4. */
+export interface EvalWeights {
+  /** ETF race lead (turns). Positive when I'm ahead of the fastest opponent. */
+  raceLead: number;
+  /** Live-shot capture pressure (expected victim value, leader-taxed). */
+  shotPressure: number;
+  /** Applied to totalExposure (expected loss on my exposed tokens). Negative. */
+  exposure: number;
+  /** Applied to opponentMass (leader-taxed opponent token value). Negative. */
+  mass: number;
+  /** My tokens currently in play. */
+  spread: number;
+  /** My tokens in the home column. */
+  homeLoaded: number;
+  /** My finished count − the race leader's finished count. */
+  finishGap: number;
 }
 
+/** Default weights — initial guesses per PHASE-5C §3.6; tuned offline in 5C-4. */
+export const EVAL_WEIGHTS: EvalWeights = {
+  raceLead: 4.0,
+  shotPressure: 0.9,
+  exposure: -1.0,
+  mass: -1.0,
+  spread: 3.0,
+  homeLoaded: 2.0,
+  finishGap: 12.0,
+};
+
 /**
- * Full board evaluation from `me`'s perspective.
- * Returns myScore − Σ(opponentScores) + race pressure.
+ * Weighted feature-vector evaluation from `me`'s perspective. Positive ≈ winning.
+ * `weights` defaults to EVAL_WEIGHTS but is injectable for the 5C-4 tuning loop.
  */
-export function evaluate(state: GameState, me: Color): number {
-  let myScore = 0;
-  let oppScore = 0;
-  let myMaxProgress = 0;
-  let oppMaxProgress = 0;
-
-  for (const token of Object.values(state.tokens)) {
-    const val = tokenValue(token.progress);
-    if (token.color === me) {
-      myScore += val;
-      if (token.progress > myMaxProgress) myMaxProgress = token.progress;
-    } else {
-      oppScore += val;
-      if (token.progress > oppMaxProgress) oppMaxProgress = token.progress;
-    }
-  }
-
-  const racePressure = 2 * (myMaxProgress - oppMaxProgress);
-  return myScore - oppScore + racePressure;
+export function evaluate(
+  state: GameState,
+  me: Color,
+  weights: EvalWeights = EVAL_WEIGHTS,
+): number {
+  return (
+    weights.raceLead * raceLead(state, me) +
+    weights.shotPressure * shotPressure(state, me) +
+    weights.exposure * totalExposure(state, me) +
+    weights.mass * opponentMass(state, me) +
+    weights.spread * spread(state, me) +
+    weights.homeLoaded * homeLoaded(state, me) +
+    weights.finishGap * finishGap(state, me)
+  );
 }
 
+const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
+
 /**
- * Advantage-scaled risk multiplier (amendment E — ahead).
- * When ahead: higher (protect the lead, avoid exposure).
+ * Advantage-scaled risk multiplier (amendment E — ahead → protect). Re-anchored
+ * to the ETF race gap (Decision 8): the gap is a stable "am I winning the race"
+ * signal, unlike raw eval score which drifts as features are added.
  * Range: 1.0 (neutral/behind) to 1.5 (far ahead).
  */
 export function riskScale(state: GameState, me: Color): number {
-  const adv = evaluate(state, me);
-  return 1 + 0.5 * Math.max(0, Math.min(1, adv / 150));
+  return 1 + 0.5 * clamp01(raceLead(state, me) / 15);
 }
 
 /**
- * Advantage-scaled capture tempo multiplier (amendment E — behind).
- * When behind: higher (take risks, capture aggressively to catch up).
- * Range: 1.0 (neutral/ahead) to 1.5 (far behind).
+ * Advantage-scaled capture-tempo multiplier (amendment E — behind → gamble).
+ * Re-anchored to the ETF race gap (Decision 8). Range: 1.0 (neutral/ahead) to 1.5.
  */
 export function captureTempoScale(state: GameState, me: Color): number {
-  const adv = evaluate(state, me);
-  return 1 + 0.5 * Math.max(0, Math.min(1, -adv / 150));
+  return 1 + 0.5 * clamp01(-raceLead(state, me) / 15);
 }
