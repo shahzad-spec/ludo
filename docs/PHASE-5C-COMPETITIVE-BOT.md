@@ -127,6 +127,25 @@ non-Pro tier.
 (paranoid model + TT + capture extensions, initial-guess weights) and rated it
 *"quite acceptable"* — positive data for the 5C-5 gate before any tuning.
 
+### Finding F-2 — the weight-sensitive P-tests are calibration-gated, not code-gated (5C-2e)
+
+**Evidence:** P-3 (refuse bait) fails at the initial weights — Pro takes an
+*unfavorable* capture (wins victim value 33, loses its own token value 43 to
+the paranoid recapture). Fixture contract verified (both moves in
+`validMoves`); the paranoid model sees the recapture; `opponentMass` at −1.0
+(with leader tax) outweighs the race/spread damage. The eval rates a losing
+trade as winning. P-2/P-4/P-5 are expected to fail for the same class of reason.
+
+**Consequence — ordering corrected:** the weight-sensitive P-tests cannot gate
+*before* tuning; they are the validation gate *after* it. Execution order is
+now **5C-3 (benchmark) → 5C-4 (tune, esp. `mass` vs `raceLead`) → activate the
+remaining P-tests**. Structural P-tests (hunt, spread, endgame) still ship in
+5C-2 — they validate machinery now and catch non-weight bugs early.
+
+**Skip policy (hard rule):** every `it.skip` carries an inline expiry reason
+naming its gate. The 5C-4 gate explicitly requires **all skipped P-tests
+unskipped and green** — a permanent skip is a gate failure, not a resolution.
+
 ---
 
 ## 2. Current Brain Anatomy (the baseline being replaced)
@@ -415,9 +434,9 @@ Unit tests (5C-1 gate):
 | Step | Deliverable | Est. | Gate |
 |---|---|---|---|
 | **5C-1** | `features.ts` + rewritten `evaluate.ts` (weighted) + re-anchored scales | ~1 d | Feature unit tests green · monotonicity invariant holds · **all prior tests unmodified & green** (frozen: 16 `evaluate.test.ts`) · Medium behavior unchanged. ✅ Shipped (`6cc5cba`, `cedaec1`, `62244dc`, 278 tests); includes a correctness fix making `searchBestMove` honor its budget *inside* the recursion (leaf-fallback on deadline). Hard eval-inheritance **moved to 5C-2** after code audit disproved automatic inheritance |
-| **5C-2** | Paranoid model + TT + capture extensions; P-1…P-8 behavioral tests | ~1 d | All P-tests green · existing search tests green · perf: p95 ≤ 120 ms desktop on benchmark position · lint + build clean. **Progress:** 2a/2b/2c shipped (`490bf2a`, `2665c6f`, `895b859`, 285 tests, Pro paranoid + TT + extensions live). **Hard full-eval wiring attempted and rejected — see Finding F-1** (Hard stays on `scoreMove`). Remaining: 2e P-tests |
+| **5C-2** | Paranoid model + TT + capture extensions; P-1…P-8 behavioral tests | ~1 d | Existing search tests green · perf: p95 ≤ 120 ms desktop on benchmark position · lint + build clean · structural P-tests green · weight-sensitive P-tests committed as documented `it.skip` (F-2). **Progress:** 2a/2b/2c shipped (`490bf2a`, `2665c6f`, `895b859` + audit fix `0ae4c3c`); P-3 fixture + weight-coupling finding committed (`166070c`). Hard full-eval wiring rejected (F-1). **Remaining:** structural P-tests (hunt, spread, endgame) |
 | **5C-3** | `tools/bot-benchmark.mjs` — placement ladder, seeded, all pairings × 200 games | ~0.5 d | Baseline report committed (`docs/reports/5C-baseline.md`): placement scores for Easy/Medium/Hard/Pro with pre-tuning weights |
-| **5C-4** | Offline weight tuning (coordinate ascent on `EVAL_WEIGHTS`, seeded tournaments, champion weights committed) | ~1 d + overnight runs | **Placement ordering holds:** Pro > Hard > Medium > Easy · Hard placement-beats Medium ≥ 55% (fixes the 18% anomaly) · Pro placement-beats Medium ≥ 65% · monotonicity invariant still holds for champion weights |
+| **5C-4** | **Prerequisite step:** wire advantage-scaling into `evaluate()` — exposure term × `riskScale`, shotPressure term × `captureTempoScale` (enables P-4/P-5; re-run frozen gate — the two sign-test fixtures have zero exposure, so they must stay green). Then offline weight tuning (coordinate ascent on `EVAL_WEIGHTS`, seeded tournaments, champion weights committed) | ~1 d + overnight runs | **Placement ordering holds:** Pro > Hard > Medium > Easy · Hard placement-beats Medium ≥ 55% (fixes the 18% anomaly) · Pro placement-beats Medium ≥ 65% · monotonicity invariant still holds for champion weights · **all skipped P-tests unskipped and green** (F-2 skip policy) |
 | **5C-5** | Human playtest + feel pass | ~0.5 d | Playtest checklist: bot visibly hunts / targets leader / traps at least once per game vs Pro · **user sign-off** |
 
 **Stop conditions (project discipline):**
