@@ -13,12 +13,12 @@
  *
  * 5C §5 additions:
  *   - Transposition table (bounded, CLEARED per root search) — a transparent
- *     cache keyed by (token-progress signature, player, phase, depth).
- *   - Budget-honoring shouldStop checked at every node, so Pro respects its
- *     wall-clock budget with the richer 5C eval.
+ *     cache keyed by (token-progress signature, player, phase, depth, extensions).
+ *   - Capture extensions: a capture move is searched at `depth` instead of
+ *     `depth - 1` (the fight deserves one extra look), capped at 2 per path.
+ *   - Budget-honoring shouldStop checked at every node.
  *   - Completion-tracking: iterative deepening only ADOPTS a depth's result if
- *     that depth searched the full horizon without the budget firing — an
- *     interrupted depth (which mixes deep + leaf-fallback scores) is discarded.
+ *     that depth searched the full horizon without the budget firing.
  */
 
 import type { GameState, Move } from '../types';
@@ -31,15 +31,23 @@ import { evaluate } from './evaluate';
 export type OpponentPolicy = (state: GameState, moves: Move[]) => Move | null;
 
 const TT_MAX = 50_000;
-// Module-scoped transposition cache (PHASE-5C §5.1). Cleared at every root
+/** Max capture extensions along any single search path (PHASE-5C §5.2). */
+const MAX_EXTENSIONS = 2;
+
+// Module-scoped search state (PHASE-5C §5.1). Cleared/reset at every root
 // search so there is zero cross-move staleness. Single-threaded => no races.
 let tt = new Map<string, number>();
 let ttHits = 0; // instrumentation, reset per root search
 let ttEnabled = true; // toggled per search via opts.tt
+let maxExtensionsSeen = 0; // high-water mark of extensions along any path
 
-/** Testing seam: read TT hit count + size (reset at each searchBestMove root). */
-export function getTTStatsForTesting(): { hits: number; size: number } {
-  return { hits: ttHits, size: tt.size };
+/** Testing seam: TT hits/size + the deepest extension count seen (per root). */
+export function getTTStatsForTesting(): {
+  hits: number;
+  size: number;
+  maxExtensions: number;
+} {
+  return { hits: ttHits, size: tt.size, maxExtensions: maxExtensionsSeen };
 }
 
 /**
@@ -80,18 +88,34 @@ function simulateRoll(state: GameState, roll: number): GameState {
   return r2.state;
 }
 
-/** TT key: full token-progress signature + current player + phase + depth. */
-function ttKey(state: GameState, depth: number): string {
+/** TT key: full token-progress signature + current player + phase + depth + extensions. */
+function ttKey(state: GameState, depth: number, extensions: number): string {
   let sig = '';
   for (const tok of Object.values(state.tokens)) sig += `${tok.progress},`;
-  return `${sig}${state.currentPlayer}|${state.phase}|${depth}`;
+  return `${sig}${state.currentPlayer}|${state.phase}|${depth}|${extensions}`;
+}
+
+/**
+ * After a move, the child's (depth, extensions). A capture under the cap keeps
+ * the same depth (one extra ply of look-ahead) and spends an extension; anything
+ * else decrements depth normally (PHASE-5C §5.2).
+ */
+function childDepthAfter(
+  depth: number,
+  extensions: number,
+  move: Move | null,
+): [number, number] {
+  if (move && move.isCapture && extensions < MAX_EXTENSIONS) {
+    return [depth, extensions + 1];
+  }
+  return [depth - 1, extensions];
 }
 
 /**
  * Expectimax with a TT probe wrapper. Cached values are exact in fixedDepth
  * mode; in budget mode an interrupted depth's results are not adopted (see
- * searchBestMove's completion-tracking), so any approximate cached values from
- * the boundary depth are harmless.
+ * searchBestMove's completion-tracking), so approximate cached values from the
+ * boundary depth are harmless.
  */
 function expectimax(
   state: GameState,
@@ -99,22 +123,24 @@ function expectimax(
   me: Color,
   opponentPolicy: OpponentPolicy,
   shouldStop: () => boolean,
+  extensions: number,
 ): number {
   if (depth <= 0 || state.phase === 'GAME_OVER' || shouldStop()) {
     return evaluate(state, me);
   }
+  if (extensions > maxExtensionsSeen) maxExtensionsSeen = extensions;
   if (ttEnabled) {
-    const key = ttKey(state, depth);
+    const key = ttKey(state, depth, extensions);
     const cached = tt.get(key);
     if (cached !== undefined) {
       ttHits++;
       return cached;
     }
-    const val = expectimaxExpand(state, depth, me, opponentPolicy, shouldStop);
+    const val = expectimaxExpand(state, depth, me, opponentPolicy, shouldStop, extensions);
     if (tt.size < TT_MAX) tt.set(key, val);
     return val;
   }
-  return expectimaxExpand(state, depth, me, opponentPolicy, shouldStop);
+  return expectimaxExpand(state, depth, me, opponentPolicy, shouldStop, extensions);
 }
 
 /** The phase-aware branching (amendment A) — no TT, called via expectimax(). */
@@ -124,6 +150,7 @@ function expectimaxExpand(
   me: Color,
   opponentPolicy: OpponentPolicy,
   shouldStop: () => boolean,
+  extensions: number,
 ): number {
   if (state.phase === 'IDLE') {
     // Chance node: enumerate all 6 dice rolls
@@ -137,19 +164,22 @@ function expectimaxExpand(
           if (myMoves.length > 0) {
             let best = -Infinity;
             for (const m of myMoves) {
-              const val = expectimax(simulate(rolled, m), depth - 1, me, opponentPolicy, shouldStop);
+              const [cd, ce] = childDepthAfter(depth, extensions, m);
+              const val = expectimax(simulate(rolled, m), cd, me, opponentPolicy, shouldStop, ce);
               if (val > best) best = val;
             }
             sum += best;
           } else {
-            sum += expectimax(rolled, depth - 1, me, opponentPolicy, shouldStop);
+            sum += expectimax(rolled, depth - 1, me, opponentPolicy, shouldStop, extensions);
           }
         } else {
           const oppMove = opponentPolicy(rolled, rolled.validMoves);
-          sum += expectimax(simulate(rolled, oppMove), depth - 1, me, opponentPolicy, shouldStop);
+          const [cd, ce] = childDepthAfter(depth, extensions, oppMove);
+          sum += expectimax(simulate(rolled, oppMove), cd, me, opponentPolicy, shouldStop, ce);
         }
       } else {
-        sum += expectimax(rolled, depth - 1, me, opponentPolicy, shouldStop);
+        // NO_LEGAL_MOVE → turn passed automatically by engine.
+        sum += expectimax(rolled, depth - 1, me, opponentPolicy, shouldStop, extensions);
       }
     }
     return sum / 6;
@@ -159,7 +189,8 @@ function expectimaxExpand(
   if (state.currentPlayer === me && state.validMoves.length > 0) {
     let best = -Infinity;
     for (const m of state.validMoves) {
-      const val = expectimax(simulate(state, m), depth - 1, me, opponentPolicy, shouldStop);
+      const [cd, ce] = childDepthAfter(depth, extensions, m);
+      const val = expectimax(simulate(state, m), cd, me, opponentPolicy, shouldStop, ce);
       if (val > best) best = val;
     }
     return best;
@@ -168,7 +199,8 @@ function expectimaxExpand(
   // SELECTING_TOKEN — opponent's turn: policy node
   if (state.currentPlayer !== me && state.validMoves.length > 0) {
     const oppMove = opponentPolicy(state, state.validMoves);
-    return expectimax(simulate(state, oppMove), depth - 1, me, opponentPolicy, shouldStop);
+    const [cd, ce] = childDepthAfter(depth, extensions, oppMove);
+    return expectimax(simulate(state, oppMove), cd, me, opponentPolicy, shouldStop, ce);
   }
 
   return evaluate(state, me);
@@ -198,9 +230,10 @@ export function searchBestMove(
   const maxDepth = opts.fixedDepth ?? 8;
   const useBudget = opts.fixedDepth === undefined;
 
-  // Fresh TT per root search (no cross-move staleness); reset instrumentation.
+  // Fresh search state per root (no cross-move staleness); reset instrumentation.
   tt = new Map();
   ttHits = 0;
+  maxExtensionsSeen = 0;
   ttEnabled = opts.tt !== false;
 
   let best = moves[0];
@@ -223,7 +256,9 @@ export function searchBestMove(
     let bestScore = -Infinity;
     let bestThisDepth = moves[0];
     for (const m of moves) {
-      const score = expectimax(simulate(state, m), depth - 1, me, opponentPolicy, shouldStop);
+      // §5.2 applies to the root move too: a capture here extends the child's depth.
+      const [cd, ce] = childDepthAfter(depth, 0, m);
+      const score = expectimax(simulate(state, m), cd, me, opponentPolicy, shouldStop, ce);
       if (score > bestScore) {
         bestScore = score;
         bestThisDepth = m;
