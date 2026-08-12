@@ -12,6 +12,7 @@ import { SAFE_TRACK_CELLS } from '../board/safeCells';
 import type { Difficulty } from './types';
 import { riskScale, captureTempoScale } from './evaluate';
 import { exposurePenalty } from './threats';
+import { searchBestMove } from './search';
 
 // Re-export BotDifficulty for backward compatibility
 export type { Difficulty as BotDifficulty } from './types';
@@ -87,11 +88,16 @@ export function chooseBotMove(
     return best;
   }
 
-  // Pro: delegate to search (added in 5B-2)
-  // For now, fall through to medium behavior until search.ts is ready
+  // Pro: expectimax search with injected opponent policy (breaks circular dep)
   if (difficulty === 'pro') {
-    // Temporary: use hard logic until search.ts is implemented
-    return chooseBotMove(state, moves, 'hard', rng);
+    const me = state.tokens[moves[0].tokenIds[0]]?.color;
+    if (!me) return moves[0];
+    return searchBestMove(
+      state, moves, me,
+      { budgetMs: 80 },
+      // Inject Medium as the opponent model (deterministic, no rng in search)
+      (s, m) => chooseBotMove(s, m, 'medium'),
+    );
   }
 
   // Easy + Medium: existing logic
