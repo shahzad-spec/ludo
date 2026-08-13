@@ -10,6 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "bench": "vite-node tools/bot-benchmark.ts",
+    "tune": "vite-node tools/tune-bot.ts",
+    "tune:smoke": "vite-node tools/tune-bot.ts -- --smoke",
     "preview": "vite preview"
   },
   "dependencies": {

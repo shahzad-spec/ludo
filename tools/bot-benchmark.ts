@@ -30,6 +30,7 @@ import type { Difficulty } from '../src/oracle/ai/types';
 import type { GameState } from '../src/oracle/types';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 function seededRng(seed: number): () => number {
   let s = seed;
@@ -67,8 +68,9 @@ interface GameResult {
   terminated: boolean;
 }
 
-/** Play one 4-seat game (seat0=A, seat1=B, seat2/3 Easy fillers). */
-function playGame(a: Difficulty, b: Difficulty, seed: number): GameResult {
+/** Play one 4-seat game (seat0=A, seat1=B, seat2/3 Easy fillers). Exported so the
+ *  tuning harness (tools/tune-bot.ts) reuses the exact same loop. */
+export function playGame(a: Difficulty, b: Difficulty, seed: number): GameResult {
   const colors = colorsForPlayerCount(4); // [red, green, yellow, blue]
   const rules = { ...soloRules(), bots: colors };
   let state = createInitialState(colors, rules);
@@ -206,4 +208,5 @@ function main() {
   console.log(`\n[bench] report written to ${out}`);
 }
 
-main();
+// Only run when invoked directly — NOT when imported by tools/tune-bot.ts.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) main();

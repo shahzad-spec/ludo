@@ -61,8 +61,10 @@ export const EVAL_WEIGHTS: EvalWeights = {
  * the SAME values inlined in evaluate(). Defined once here so the two tiers can
  * never silently diverge (Step 0 of 5C-4b).
  */
-export const SCALE_GAP_TURNS = 15;
-export const SCALE_AMPLITUDE = 0.5;
+export const SCALE_PARAMS: { gapTurns: number; amplitude: number } = {
+  gapTurns: 15,
+  amplitude: 0.5,
+};
 
 /**
  * Weighted feature-vector evaluation from `me`'s perspective. Positive ≈ winning.
@@ -79,8 +81,8 @@ export function evaluate(
   // computed once and the scale arithmetic inlined for leaf-eval efficiency (the
   // canonical riskScale/captureTempoScale functions below stay for tests + Hard).
   const lead = raceLead(state, me);
-  const rScale = 1 + SCALE_AMPLITUDE * Math.max(0, Math.min(1, lead / SCALE_GAP_TURNS));
-  const cScale = 1 + SCALE_AMPLITUDE * Math.max(0, Math.min(1, -lead / SCALE_GAP_TURNS));
+  const rScale = 1 + SCALE_PARAMS.amplitude * Math.max(0, Math.min(1, lead / SCALE_PARAMS.gapTurns));
+  const cScale = 1 + SCALE_PARAMS.amplitude * Math.max(0, Math.min(1, -lead / SCALE_PARAMS.gapTurns));
   return (
     weights.raceLead * lead +
     weights.shotPressure * cScale * shotPressure(state, me) +
@@ -101,7 +103,7 @@ const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
  * Range: 1.0 (neutral/behind) to 1.5 (far ahead).
  */
 export function riskScale(state: GameState, me: Color): number {
-  return 1 + SCALE_AMPLITUDE * clamp01(raceLead(state, me) / SCALE_GAP_TURNS);
+  return 1 + SCALE_PARAMS.amplitude * clamp01(raceLead(state, me) / SCALE_PARAMS.gapTurns);
 }
 
 /**
@@ -109,5 +111,5 @@ export function riskScale(state: GameState, me: Color): number {
  * Re-anchored to the ETF race gap (Decision 8). Range: 1.0 (neutral/ahead) to 1.5.
  */
 export function captureTempoScale(state: GameState, me: Color): number {
-  return 1 + SCALE_AMPLITUDE * clamp01(-raceLead(state, me) / SCALE_GAP_TURNS);
+  return 1 + SCALE_PARAMS.amplitude * clamp01(-raceLead(state, me) / SCALE_PARAMS.gapTurns);
 }
