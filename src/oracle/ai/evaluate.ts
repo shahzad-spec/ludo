@@ -64,10 +64,18 @@ export function evaluate(
   me: Color,
   weights: EvalWeights = EVAL_WEIGHTS,
 ): number {
+  // Advantage-scaled terms (PHASE-5C amendment E / Decision 8, wired 5C-4):
+  // exposure is penalized MORE when ahead (protect the lead) and LESS when behind;
+  // shot-pressure is valued MORE when behind (gamble to catch up). raceLead is
+  // computed once and the scale arithmetic inlined for leaf-eval efficiency (the
+  // canonical riskScale/captureTempoScale functions below stay for tests + Hard).
+  const lead = raceLead(state, me);
+  const rScale = 1 + 0.5 * Math.max(0, Math.min(1, lead / 15));
+  const cScale = 1 + 0.5 * Math.max(0, Math.min(1, -lead / 15));
   return (
-    weights.raceLead * raceLead(state, me) +
-    weights.shotPressure * shotPressure(state, me) +
-    weights.exposure * totalExposure(state, me) +
+    weights.raceLead * lead +
+    weights.shotPressure * cScale * shotPressure(state, me) +
+    weights.exposure * rScale * totalExposure(state, me) +
     weights.mass * opponentMass(state, me) +
     weights.spread * spread(state, me) +
     weights.homeLoaded * homeLoaded(state, me) +

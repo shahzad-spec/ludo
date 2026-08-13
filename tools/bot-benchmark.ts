@@ -193,8 +193,10 @@ function main() {
     `## Target gates (5C-4, post-tuning)`,
     ``,
     `- Placement ordering: Pro > Hard > Medium > Easy`,
-    `- Hard placement-beats Medium ≥ 55% (closes the F-1/18% anomaly once Hard is re-wired)`,
-    `- Pro placement-beats Medium ≥ 65%`,
+    `- Hard placement-beats Medium ≥ 55% (F-1: Hard stays on scoreMove — its only lever`,
+    `  is the shared ETF-anchored scale constants, not EVAL_WEIGHTS; demote to ≥52% +`,
+    `  backlog if unreachable, never silent)`,
+    `- Pro placement-beats Medium ≥ 65% at ≥ 30 games (sample-size rule: n=10 is noise)`,
     `- All \`it.skip\` P-tests (P-2/P-3/P-4/P-5/P-8) unskipped and green (F-2)`,
     `- No tier stalls: mean turns-to-finish stays in normal range (no F-1 recurrence)`,
   ].join('\n');
