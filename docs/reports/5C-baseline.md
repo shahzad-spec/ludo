@@ -1,7 +1,9 @@
 # 5C Baseline — Pre-Tuning Placement Ladder
 
 > Generated 2026-08-13, seed 42, games: non-Pro 200, Pro 30.
-> Weights: pre-tuning defaults (`EVAL_WEIGHTS`). Hard = v1 `scoreMove` (F-1).
+> Weights: pre-tuning defaults (`EVAL_WEIGHTS`), **post-wiring** — advantage-scaling
+> active in `evaluate()` (exposure × riskScale, shots × captureTempoScale, `08c048e`).
+> Pre-wiring numbers live in git history at `9a70473`. Hard = v1 `scoreMove` (F-1).
 > **Placement proxy:** v1 ends at the first winner (`win.ts:34`), so 1st = winner;
 > 2nd–4th ranked by finished-token count then colorETF. "A beats B" = rank(A) < rank(B).
 > Each game: seat0=A, seat1=B, seat2/3 = Easy fillers.

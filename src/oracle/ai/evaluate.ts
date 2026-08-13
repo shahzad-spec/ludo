@@ -56,6 +56,15 @@ export const EVAL_WEIGHTS: EvalWeights = {
 };
 
 /**
+ * Advantage-scaling shared constants (PHASE-5C Decision 8). These are Hard's
+ * ONLY tuning lever — Hard consumes riskScale/captureTempoScale, and Pro uses
+ * the SAME values inlined in evaluate(). Defined once here so the two tiers can
+ * never silently diverge (Step 0 of 5C-4b).
+ */
+export const SCALE_GAP_TURNS = 15;
+export const SCALE_AMPLITUDE = 0.5;
+
+/**
  * Weighted feature-vector evaluation from `me`'s perspective. Positive ≈ winning.
  * `weights` defaults to EVAL_WEIGHTS but is injectable for the 5C-4 tuning loop.
  */
@@ -70,8 +79,8 @@ export function evaluate(
   // computed once and the scale arithmetic inlined for leaf-eval efficiency (the
   // canonical riskScale/captureTempoScale functions below stay for tests + Hard).
   const lead = raceLead(state, me);
-  const rScale = 1 + 0.5 * Math.max(0, Math.min(1, lead / 15));
-  const cScale = 1 + 0.5 * Math.max(0, Math.min(1, -lead / 15));
+  const rScale = 1 + SCALE_AMPLITUDE * Math.max(0, Math.min(1, lead / SCALE_GAP_TURNS));
+  const cScale = 1 + SCALE_AMPLITUDE * Math.max(0, Math.min(1, -lead / SCALE_GAP_TURNS));
   return (
     weights.raceLead * lead +
     weights.shotPressure * cScale * shotPressure(state, me) +
@@ -92,7 +101,7 @@ const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
  * Range: 1.0 (neutral/behind) to 1.5 (far ahead).
  */
 export function riskScale(state: GameState, me: Color): number {
-  return 1 + 0.5 * clamp01(raceLead(state, me) / 15);
+  return 1 + SCALE_AMPLITUDE * clamp01(raceLead(state, me) / SCALE_GAP_TURNS);
 }
 
 /**
@@ -100,5 +109,5 @@ export function riskScale(state: GameState, me: Color): number {
  * Re-anchored to the ETF race gap (Decision 8). Range: 1.0 (neutral/ahead) to 1.5.
  */
 export function captureTempoScale(state: GameState, me: Color): number {
-  return 1 + 0.5 * clamp01(-raceLead(state, me) / 15);
+  return 1 + SCALE_AMPLITUDE * clamp01(-raceLead(state, me) / SCALE_GAP_TURNS);
 }
