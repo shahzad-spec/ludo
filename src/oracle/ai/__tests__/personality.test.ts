@@ -79,14 +79,12 @@ function stateWithMoves(
 }
 
 describe('P-3 — Pro refuses bait (paranoid recapture)', () => {
-  // SKIPPED — 5C-4-gated. With the initial weights, the `mass` term (−1.0 on a
-  // 0–300 scale) over-values captures: Pro takes even an UNFAVORABLE capture
-  // because the opponentMass drop outweighs the recapture cost (verified: it
-  // picks finalProgress 46, the capture). The paranoid model DOES see the
-  // recapture; the eval just rates the trade as winning. Once 5C-4 tunes the
-  // mass weight down, unskip this and it should pass. Fixture-contract verified
-  // (both moves are in validMoves), so this is a weight issue, not a 5B-2-style
-  // contract bug.
+  // SKIPPED — 5C-4-gated (mass tuning). Pre- AND post-wiring (5C-4b) verified:
+  // Pro picks the capture (finalProgress 46). Advantage-scaling does NOT rescue
+  // it here — in this fixture red is BEHIND, so captureTempoScale AMPLIFIES
+  // shot-pressure (gamble) and riskScale gives no extra exposure caution. The
+  // paranoid model sees the recapture; the over-strong `mass` term rates the
+  // trade as winning. Lowering `mass` is the gate. Fixture-contract verified.
   it.skip('declines an UNFAVORABLE capture that the paranoid opponent recaptures', () => {
     // red-0 (p43, value 43) can capture green-0 at cell 46 (p33, value 33), but
     // green-1 (cell 45) recaptures red-0 on roll 1. The trade loses red's more
