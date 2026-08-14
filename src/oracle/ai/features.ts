@@ -259,3 +259,29 @@ export function ambushPressure(state: GameState, me: Color): number {
   }
   return pressure;
 }
+
+/**
+ * Hot-haven count (5C-6 step 2): my tokens on safe shared-loop cells with at
+ * least one opponent lurking behind within the anticipation band. Deliberately
+ * proximity-conditional — a COLD safe cell is worth nothing, which is the
+ * anti-F-1 guard (no parking meter; the cold-haven test pins this). The
+ * haven premium makes abandoning a hot ambush position cost something.
+ */
+export function safeHaven(state: GameState, me: Color): number {
+  let havens = 0;
+  for (const t of Object.values(state.tokens)) {
+    if (t.color !== me) continue;
+    if (t.progress < 0 || t.progress > 50) continue;
+    const cell = (ENTRY_OFFSET[me] + t.progress) % SHARED_LOOP_LENGTH;
+    if (!SAFE_TRACK_CELLS.has(cell)) continue;
+    const lurked = Object.values(state.tokens).some((o) => {
+      if (o.color === me) return false;
+      if (o.progress < 0 || o.progress > 50) return false;
+      const oCell = (ENTRY_OFFSET[o.color] + o.progress) % SHARED_LOOP_LENGTH;
+      const behind = loopDelta(oCell, cell);
+      return behind >= 1 && behind <= ANTICIPATION_BAND_MAX;
+    });
+    if (lurked) havens++;
+  }
+  return havens;
+}

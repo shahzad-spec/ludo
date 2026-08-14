@@ -307,3 +307,27 @@ describe('5C-6 — ambush: Pro keeps a parked ambusher (playtest finding 1)', ()
     expect(choice?.tokenIds[0]).toBe('red-1'); // keeps the ambusher parked
   });
 });
+
+describe('5C-6 — cold haven: Pro abandons safety freely (anti-F-1 guard)', () => {
+  it('leaves a COLD safe cell when racing is better (no camping)', () => {
+    // red-0 on safe star 8 but NO opponent anywhere near (all in yard). Moving it
+    // +6 races more than the +4 alternative on red-1 — Pro must take the race,
+    // proving safeHaven is proximity-conditional, not a parking meter.
+    const leave = makeMove('red-0', 14, 14); // +6
+    const stay = makeMove('red-1', 24, 24); // +4
+    const state = stateWithMoves(
+      {
+        'red-0': { color: 'red', progress: 8 },
+        'red-1': { color: 'red', progress: 20 },
+        'blue-0': { color: 'blue', progress: -1 }, // yard — haven is cold
+      },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN' },
+      [leave, stay],
+    );
+    const choice = searchBestMove(
+      state, [leave, stay], 'red', { fixedDepth: 1 },
+      paranoidPolicy('red', simulateMove),
+    );
+    expect(choice?.tokenIds[0]).toBe('red-0'); // races, does not camp
+  });
+});

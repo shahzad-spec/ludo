@@ -19,6 +19,7 @@ import {
   homeLoaded,
   finishGap,
   ambushPressure,
+  safeHaven,
 } from './features';
 import { totalExposure, anticipationDanger } from './threats';
 import type { GameState } from '../types';
@@ -47,6 +48,8 @@ export interface EvalWeights {
   ambush: number;
   /** Discounted 7-12-behind danger on my exposed tokens (negative). */
   anticipDanger: number;
+  /** My safe tokens with an opponent lurking in the band (hot havens). */
+  safeHaven: number;
 }
 
 /** Default weights — PHASE-5C §3.6. NOTE: the 5C-4b tuning run did NOT escape the
@@ -62,6 +65,7 @@ export const EVAL_WEIGHTS: EvalWeights = {
   finishGap: 12.0,
   ambush: 0.45,
   anticipDanger: -0.5,
+  safeHaven: 1.5,
 };
 
 /**
@@ -107,7 +111,8 @@ export function evaluate(
     weights.homeLoaded * homeLoaded(state, me) +
     weights.finishGap * finishGap(state, me) +
     weights.ambush * cScale * ambushPressure(state, me) +
-    weights.anticipDanger * rScale * anticipationDanger(state, me)
+    weights.anticipDanger * rScale * anticipationDanger(state, me) +
+    weights.safeHaven * safeHaven(state, me)
   );
 }
 

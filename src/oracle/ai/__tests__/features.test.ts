@@ -26,6 +26,7 @@ import {
   YARD_EXIT_TURNS,
   LEADER_TAX,
   ambushPressure,
+  safeHaven,
 } from '../features';
 import { stateWithPlacements } from '../../__tests__/helpers';
 import { BASE, FINISH } from '../../board/track';
@@ -271,5 +272,31 @@ describe('ambushPressure — anticipation band (5C-6)', () => {
       'blue-0': { color: 'blue', progress: 8 }, // cell 47, 13 behind
     });
     expect(ambushPressure(state, 'red')).toBe(0);
+  });
+});
+
+describe('safeHaven — hot havens only (5C-6 step 2)', () => {
+  it('counts my safe token with an opponent lurking in the band', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 8 }, // safe star, cell 8
+      'blue-0': { color: 'blue', progress: 18 }, // cell 5, 3 behind — lurker
+    });
+    expect(safeHaven(state, 'red')).toBe(1);
+  });
+
+  it('zero when no opponent is near (cold haven — anti-F-1 camping guard)', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 8 },
+      'blue-0': { color: 'blue', progress: -1 }, // in yard
+    });
+    expect(safeHaven(state, 'red')).toBe(0);
+  });
+
+  it('zero for an unsafe cell even with a lurker', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 }, // cell 10, not safe
+      'blue-0': { color: 'blue', progress: 18 }, // cell 5, 5 behind
+    });
+    expect(safeHaven(state, 'red')).toBe(0);
   });
 });
