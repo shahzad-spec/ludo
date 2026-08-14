@@ -25,6 +25,7 @@ import {
   MEAN_STEP,
   YARD_EXIT_TURNS,
   LEADER_TAX,
+  ambushPressure,
 } from '../features';
 import { stateWithPlacements } from '../../__tests__/helpers';
 import { BASE, FINISH } from '../../board/track';
@@ -225,5 +226,50 @@ describe('structural features', () => {
   it('finishGap = my finished count \u2212 the leader\u2019s finished count', () => {
     const state = stateWithPlacements({ 'red-0': { color: 'red', progress: FINISH } });
     expect(finishGap(state, 'red')).toBe(1);
+  });
+});
+
+describe('ambushPressure — anticipation band (5C-6)', () => {
+  // Geometry: red-0 parks on safe star cell 8 (p8). blue-0 progress is chosen so
+  // its cell = (39 + pb) % 52 lands where each case needs. All blue positions are
+  // well past exit (exit = p0 at cell 39) per the exit-cell rule.
+  it('positive for an opponent 1-6 behind my SAFE token', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 8 }, // cell 8, safe star
+      'blue-0': { color: 'blue', progress: 18 }, // cell 5, 3 behind
+    });
+    expect(ambushPressure(state, 'red')).toBeGreaterThan(0);
+  });
+
+  it('discounted but positive at 7-12 behind (the band proper)', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 8 },
+      'blue-0': { color: 'blue', progress: 9 }, // cell 48, 12 behind
+    });
+    expect(ambushPressure(state, 'red')).toBeGreaterThan(0);
+  });
+
+  it('zero for an opponent behind my UNSAFE token (that is danger, not prey)', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 }, // cell 10, not safe
+      'blue-0': { color: 'blue', progress: 18 }, // cell 5, 5 behind
+    });
+    expect(ambushPressure(state, 'red')).toBe(0);
+  });
+
+  it('zero when the opponent is AHEAD (that is shotPressure territory)', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 8 },
+      'blue-0': { color: 'blue', progress: 27 }, // cell 14, ahead of cell 8
+    });
+    expect(ambushPressure(state, 'red')).toBe(0);
+  });
+
+  it('zero beyond the band (13+ behind)', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 8 },
+      'blue-0': { color: 'blue', progress: 8 }, // cell 47, 13 behind
+    });
+    expect(ambushPressure(state, 'red')).toBe(0);
   });
 });

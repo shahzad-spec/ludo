@@ -279,3 +279,31 @@ describe('P-8 — Pro holds a trap square', () => {
     expect(true).toBe(true);
   });
 });
+
+describe('5C-6 — ambush: Pro keeps a parked ambusher (playtest finding 1)', () => {
+  it('moves the OTHER token rather than abandoning a hot safe ambush', () => {
+    // Playtest geometry: red-0 parked on safe star 8 with blue-0 three behind and
+    // closing (blue p18 = cell 5, well past exit per the exit-cell rule). red-1
+    // is also movable. Both options advance +4 (equal race). Abandoning cell 8
+    // throws away the ambush (blue must transit red-0's strike zone) AND lands
+    // red-0 at cell 12 with blue 7 behind (anticipation band). Pro must hold.
+    const abandon = makeMove('red-0', 12, 12);
+    const hold = makeMove('red-1', 24, 24);
+    const state = stateWithMoves(
+      {
+        'red-0': { color: 'red', progress: 8 }, // cell 8, safe star
+        'red-1': { color: 'red', progress: 20 },
+        'blue-0': { color: 'blue', progress: 18 }, // cell 5, 3 behind red-0
+      },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN' },
+      [abandon, hold],
+    );
+    const choice = searchBestMove(
+      state, [abandon, hold], 'red', { fixedDepth: 1 },
+      paranoidPolicy('red', simulateMove),
+    );
+    expect(state.validMoves).toContain(abandon);
+    expect(state.validMoves).toContain(hold);
+    expect(choice?.tokenIds[0]).toBe('red-1'); // keeps the ambusher parked
+  });
+});

@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { exposurePenalty, totalExposure } from '../threats';
+import { exposurePenalty, totalExposure, anticipationDanger } from '../threats';
 import { stateWithPlacements } from '../../__tests__/helpers';
 
 describe('exposurePenalty', () => {
@@ -86,5 +86,40 @@ describe('totalExposure — aggregate expected loss across my tokens', () => {
   it('zero when no opponents are on the track', () => {
     const state = stateWithPlacements({ 'red-0': { color: 'red', progress: 10 } });
     expect(totalExposure(state, 'red')).toBe(0);
+  });
+});
+
+describe('anticipationDanger — 7-12 band behind EXPOSED tokens (5C-6)', () => {
+  // red-0 exposed at cell 10 (p10, not safe). blue cells via (39 + pb) % 52.
+  it('positive for an opponent 9 behind my exposed token', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 },
+      'blue-0': { color: 'blue', progress: 14 }, // cell 1, 9 behind
+    });
+    expect(anticipationDanger(state, 'red')).toBeGreaterThan(0);
+  });
+
+  it('zero at 1-6 behind (that is exposurePenalty territory, unchanged)', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 },
+      'blue-0': { color: 'blue', progress: 19 }, // cell 6, 4 behind
+    });
+    expect(anticipationDanger(state, 'red')).toBe(0);
+  });
+
+  it('zero beyond the band (13+ behind)', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 },
+      'blue-0': { color: 'blue', progress: 10 }, // cell 49, 13 behind
+    });
+    expect(anticipationDanger(state, 'red')).toBe(0);
+  });
+
+  it('zero when my token is SAFE (safe tokens are not endangered)', () => {
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 8 }, // safe star
+      'blue-0': { color: 'blue', progress: 12 }, // cell 51, 9 behind cell 8
+    });
+    expect(anticipationDanger(state, 'red')).toBe(0);
   });
 });

@@ -7,9 +7,15 @@
 
 import type { GameState } from '../types';
 import type { Color, Position } from '../board/track';
-import { ENTRY_OFFSET } from '../board/track';
+import { ENTRY_OFFSET, SHARED_LOOP_LENGTH } from '../board/track';
 import { SAFE_TRACK_CELLS } from '../board/safeCells';
-import { tokenValue } from './features';
+import {
+  tokenValue,
+  ANTICIPATION_BAND_MIN,
+  ANTICIPATION_BAND_MAX,
+  AMBUSH_FAR_DISCOUNT,
+  loopDelta,
+} from './features';
 
 /**
  * Expected loss from parking at `dest` where opponents can capture.
@@ -57,6 +63,33 @@ export function totalExposure(state: GameState, me: Color): number {
     if (t.progress < 0 || t.progress > 50) continue; // shared loop only
     const cell = (ENTRY_OFFSET[me] + t.progress) % 52;
     total += exposurePenalty(state, { kind: 'track', cell }, me, 1, t.progress);
+  }
+  return total;
+}
+
+/**
+ * Anticipation-band danger (5C-6): opponents 7-12 behind my EXPOSED shared-loop
+ * tokens can reach me in ~two rolls — discounted future capture risk, distinct
+ * from exposurePenalty's 1-6 band (unchanged). Positive magnitude like
+ * totalExposure.
+ */
+export function anticipationDanger(state: GameState, me: Color): number {
+  let total = 0;
+  for (const t of Object.values(state.tokens)) {
+    if (t.color !== me) continue;
+    if (t.progress < 0 || t.progress > 50) continue;
+    const cell = (ENTRY_OFFSET[me] + t.progress) % SHARED_LOOP_LENGTH;
+    if (SAFE_TRACK_CELLS.has(cell)) continue; // safe tokens are not endangered
+    const myValue = tokenValue(t.progress);
+    for (const opp of Object.values(state.tokens)) {
+      if (opp.color === me) continue;
+      if (opp.progress < 0 || opp.progress > 50) continue;
+      const oppCell = (ENTRY_OFFSET[opp.color] + opp.progress) % SHARED_LOOP_LENGTH;
+      const behind = loopDelta(oppCell, cell);
+      if (behind >= ANTICIPATION_BAND_MIN && behind <= ANTICIPATION_BAND_MAX) {
+        total += AMBUSH_FAR_DISCOUNT * (1 / 6) * myValue;
+      }
+    }
   }
   return total;
 }

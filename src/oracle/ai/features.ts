@@ -11,7 +11,7 @@
  */
 
 import type { GameState } from '../types';
-import { BASE, FINISH, FIRST_HOME_PROGRESS, ENTRY_OFFSET } from '../board/track';
+import { BASE, FINISH, FIRST_HOME_PROGRESS, ENTRY_OFFSET, SHARED_LOOP_LENGTH } from '../board/track';
 import type { Color } from '../board/track';
 import { SAFE_TRACK_CELLS } from '../board/safeCells';
 
@@ -212,4 +212,50 @@ export function finishGap(state: GameState, me: Color): number {
     else if (leader !== null && t.color === leader) theirs++;
   }
   return mine - theirs;
+}
+
+/**
+ * Anticipation band (PHASE-5C 5C-6): the zone beyond single-roll reach where
+ * approaching opponents are invisible to the 1-6 shot/exposure bands. An
+ * opponent in this zone behind my SAFE token is future prey (it must transit my
+ * strike zone to get ahead); behind my EXPOSED token it is future danger.
+ * Multi-dice (future phase) widens capture reach — ONLY these constants and the
+ * band factor change then; that is the cheap-migration promise.
+ */
+export const ANTICIPATION_BAND_MIN = 7;
+export const ANTICIPATION_BAND_MAX = 12;
+/** Weight of the 7-12 sub-band relative to the 1-6 sub-band. */
+export const AMBUSH_FAR_DISCOUNT = 0.5;
+
+/** Forward distance around the shared loop from `fromCell` to `toCell` (0-51). */
+export function loopDelta(fromCell: number, toCell: number): number {
+  return (toCell - fromCell + SHARED_LOOP_LENGTH) % SHARED_LOOP_LENGTH;
+}
+
+/**
+ * Future-shot value of my SAFE tokens: an opponent trailing a safe token must
+ * pass through its 1-6 strike zone, so it is discounted prey (the playtest
+ * "wait and foresee" behavior). Mirrors shotPressure's (1/6 x victimValue x
+ * tax) structure with a band factor.
+ */
+export function ambushPressure(state: GameState, me: Color): number {
+  const leader = raceLeader(state, me);
+  let pressure = 0;
+  for (const t of Object.values(state.tokens)) {
+    if (t.color !== me) continue;
+    if (t.progress < 0 || t.progress > 50) continue; // shared loop only
+    const cell = (ENTRY_OFFSET[me] + t.progress) % SHARED_LOOP_LENGTH;
+    if (!SAFE_TRACK_CELLS.has(cell)) continue; // ambush is only safe from safety
+    for (const opp of Object.values(state.tokens)) {
+      if (opp.color === me) continue;
+      if (opp.progress < 0 || opp.progress > 50) continue;
+      const oppCell = (ENTRY_OFFSET[opp.color] + opp.progress) % SHARED_LOOP_LENGTH;
+      const behind = loopDelta(oppCell, cell); // how far the opponent trails me
+      if (behind < 1 || behind > ANTICIPATION_BAND_MAX) continue;
+      const factor = behind <= 6 ? 1 : AMBUSH_FAR_DISCOUNT;
+      const tax = leader !== null && opp.color === leader ? LEADER_TAX : 1;
+      pressure += (1 / 6) * tokenValue(opp.progress) * factor * tax;
+    }
+  }
+  return pressure;
 }

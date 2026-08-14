@@ -18,8 +18,9 @@ import {
   spread,
   homeLoaded,
   finishGap,
+  ambushPressure,
 } from './features';
-import { totalExposure } from './threats';
+import { totalExposure, anticipationDanger } from './threats';
 import type { GameState } from '../types';
 import type { Color } from '../board/track';
 
@@ -42,6 +43,10 @@ export interface EvalWeights {
   homeLoaded: number;
   /** My finished count − the race leader's finished count. */
   finishGap: number;
+  /** Future-shot value of opponents trailing my safe tokens. */
+  ambush: number;
+  /** Discounted 7-12-behind danger on my exposed tokens (negative). */
+  anticipDanger: number;
 }
 
 /** Default weights — PHASE-5C §3.6. NOTE: the 5C-4b tuning run did NOT escape the
@@ -55,6 +60,8 @@ export const EVAL_WEIGHTS: EvalWeights = {
   spread: 3.0,
   homeLoaded: 2.0,
   finishGap: 12.0,
+  ambush: 0.45,
+  anticipDanger: -0.5,
 };
 
 /**
@@ -98,7 +105,9 @@ export function evaluate(
     weights.mass * opponentMass(state, me) +
     weights.spread * spread(state, me) +
     weights.homeLoaded * homeLoaded(state, me) +
-    weights.finishGap * finishGap(state, me)
+    weights.finishGap * finishGap(state, me) +
+    weights.ambush * cScale * ambushPressure(state, me) +
+    weights.anticipDanger * rScale * anticipationDanger(state, me)
   );
 }
 
