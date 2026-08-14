@@ -161,7 +161,7 @@ export function shotPressure(state: GameState, me: Color): number {
   let pressure = 0;
   for (const shot of captureShots(state, me)) {
     const victim = state.tokens[shot.victimId];
-    const tax = leader !== null && victim.color === leader ? LEADER_TAX : 1;
+    const tax = leader !== null && victim.color === leader ? effectiveLeaderTax(state, me) : 1;
     pressure += (1 / 6) * shot.victimValue * tax;
   }
   return pressure;
@@ -178,7 +178,7 @@ export function opponentMass(state: GameState, me: Color): number {
   for (const t of Object.values(state.tokens)) {
     if (t.color === me) continue;
     const v = tokenValue(t.progress);
-    mass += leader !== null && t.color === leader ? v * LEADER_TAX : v;
+    mass += leader !== null && t.color === leader ? v * effectiveLeaderTax(state, me) : v;
   }
   return mass;
 }
@@ -253,7 +253,7 @@ export function ambushPressure(state: GameState, me: Color): number {
       const behind = loopDelta(oppCell, cell); // how far the opponent trails me
       if (behind < 1 || behind > ANTICIPATION_BAND_MAX) continue;
       const factor = behind <= 6 ? 1 : AMBUSH_FAR_DISCOUNT;
-      const tax = leader !== null && opp.color === leader ? LEADER_TAX : 1;
+      const tax = leader !== null && opp.color === leader ? effectiveLeaderTax(state, me) : 1;
       pressure += (1 / 6) * tokenValue(opp.progress) * factor * tax;
     }
   }
@@ -284,4 +284,26 @@ export function safeHaven(state: GameState, me: Color): number {
     if (lurked) havens++;
   }
   return havens;
+}
+
+/**
+ * Leader-finish urgency (5C-6 step 3): the flat LEADER_TAX treats "leader by a
+ * nose" and "leader one roll from winning" identically. Urgency ramps from 0 at
+ * ETF_URGENCY_REF (half a fresh house's remaining work) to 1 as the leader
+ * approaches the finish, amplifying their tokens' value so positioning against
+ * the near-winner dominates — the playtest "set up the snipe" behavior. Derived
+ * from colorETF, which already exists.
+ */
+export const ETF_URGENCY_REF = 44;
+export const URGENCY_GAIN = 0.8;
+
+export function leaderUrgency(state: GameState, me: Color): number {
+  const leader = raceLeader(state, me);
+  if (leader === null) return 0;
+  return Math.max(0, Math.min(1, 1 - colorETF(state, leader) / ETF_URGENCY_REF));
+}
+
+/** LEADER_TAX scaled by how close the race leader is to finishing. */
+export function effectiveLeaderTax(state: GameState, me: Color): number {
+  return LEADER_TAX + URGENCY_GAIN * leaderUrgency(state, me);
 }

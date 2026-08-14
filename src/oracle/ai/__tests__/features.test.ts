@@ -27,6 +27,8 @@ import {
   LEADER_TAX,
   ambushPressure,
   safeHaven,
+  leaderUrgency,
+  effectiveLeaderTax,
 } from '../features';
 import { stateWithPlacements } from '../../__tests__/helpers';
 import { BASE, FINISH } from '../../board/track';
@@ -298,5 +300,34 @@ describe('safeHaven — hot havens only (5C-6 step 2)', () => {
       'blue-0': { color: 'blue', progress: 18 }, // cell 5, 5 behind
     });
     expect(safeHaven(state, 'red')).toBe(0);
+  });
+});
+
+describe('leaderUrgency + effectiveLeaderTax (5C-6 step 3)', () => {
+  it('urgency 0 at a fresh-ish start (leader far from finishing)', () => {
+    const state = stateWithPlacements({ 'green-0': { color: 'green', progress: 30 } });
+    expect(leaderUrgency(state, 'red')).toBe(0);
+  });
+
+  it('urgency near 1 when the leader is one roll from winning', () => {
+    const state = stateWithPlacements({
+      'green-0': { color: 'green', progress: 50 },
+      'green-1': { color: 'green', progress: 56 },
+      'green-2': { color: 'green', progress: 56 },
+      'green-3': { color: 'green', progress: 56 },
+    });
+    expect(leaderUrgency(state, 'red')).toBeGreaterThan(0.9);
+  });
+
+  it('effectiveLeaderTax = LEADER_TAX when calm, amplified when urgent', () => {
+    const calm = stateWithPlacements({ 'green-0': { color: 'green', progress: 30 } });
+    expect(effectiveLeaderTax(calm, 'red')).toBe(LEADER_TAX);
+    const urgent = stateWithPlacements({
+      'green-0': { color: 'green', progress: 50 },
+      'green-1': { color: 'green', progress: 56 },
+      'green-2': { color: 'green', progress: 56 },
+      'green-3': { color: 'green', progress: 56 },
+    });
+    expect(effectiveLeaderTax(urgent, 'red')).toBeGreaterThan(LEADER_TAX);
   });
 });

@@ -331,3 +331,35 @@ describe('5C-6 — cold haven: Pro abandons safety freely (anti-F-1 guard)', () 
     expect(choice?.tokenIds[0]).toBe('red-0'); // races, does not camp
   });
 });
+
+describe('5C-6 — endgame snipe: Pro sets up the capture on a near-winner (playtest finding 2)', () => {
+  it('moves into strike position against the leader\u2019s last token', () => {
+    // Playtest geometry: green is one roll from winning (3 finished + last token
+    // at p50 = cell 11, capturable — well past exit). red-0 at p2 can advance 6 to
+    // the safe star at cell 8, putting the victim 3 AHEAD (a live shot the next
+    // turn); the alternative races red-1 +6 with no tactical content. Equal race.
+    // NOTE: pins the playtest BEHAVIOR; urgency itself is isolated in the unit
+    // tests above (the shot would also win without it — by less).
+    const setup = makeMove('red-0', 8, 8);
+    const race = makeMove('red-1', 36, 36);
+    const state = stateWithMoves(
+      {
+        'red-0': { color: 'red', progress: 2 }, // cell 2
+        'red-1': { color: 'red', progress: 30 },
+        'green-0': { color: 'green', progress: 50 }, // cell 11 — LAST token
+        'green-1': { color: 'green', progress: 56 },
+        'green-2': { color: 'green', progress: 56 },
+        'green-3': { color: 'green', progress: 56 },
+      },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN' },
+      [setup, race],
+    );
+    const choice = searchBestMove(
+      state, [setup, race], 'red', { fixedDepth: 1 },
+      paranoidPolicy('red', simulateMove),
+    );
+    expect(state.validMoves).toContain(setup);
+    expect(state.validMoves).toContain(race);
+    expect(choice?.tokenIds[0]).toBe('red-0'); // takes the snipe setup
+  });
+});
