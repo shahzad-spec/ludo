@@ -44,7 +44,9 @@ export interface EvalWeights {
   finishGap: number;
 }
 
-/** Default weights — initial guesses per PHASE-5C §3.6; tuned offline in 5C-4. */
+/** Default weights — PHASE-5C §3.6. NOTE: the 5C-4b tuning run did NOT escape the
+ *  n=30 noise band — its champion overfit seeds 1000/9000 and REGRESSED on seed 42
+ *  (pro:medium 70% -> 50%), so it was reverted. See docs/reports/5C-tuning-champion.md. */
 export const EVAL_WEIGHTS: EvalWeights = {
   raceLead: 4.0,
   shotPressure: 0.9,
@@ -62,6 +64,7 @@ export const EVAL_WEIGHTS: EvalWeights = {
  * never silently diverge (Step 0 of 5C-4b).
  */
 export const SCALE_PARAMS: { gapTurns: number; amplitude: number } = {
+  // Reverted from the 5C-4b champion (10/0.4) — it overfit; see EVAL_WEIGHTS note.
   gapTurns: 15,
   amplitude: 0.5,
 };

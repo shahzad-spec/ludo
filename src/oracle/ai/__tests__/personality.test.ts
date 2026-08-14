@@ -79,12 +79,14 @@ function stateWithMoves(
 }
 
 describe('P-3 — Pro refuses bait (paranoid recapture)', () => {
-  // SKIPPED — 5C-4-gated (mass tuning). Pre- AND post-wiring (5C-4b) verified:
-  // Pro picks the capture (finalProgress 46). Advantage-scaling does NOT rescue
-  // it here — in this fixture red is BEHIND, so captureTempoScale AMPLIFIES
-  // shot-pressure (gamble) and riskScale gives no extra exposure caution. The
-  // paranoid model sees the recapture; the over-strong `mass` term rates the
-  // trade as winning. Lowering `mass` is the gate. Fixture-contract verified.
+  // DEMOTED — F-2 documented demotion (not a pending skip). Pre-wiring, post-wiring,
+  // AND post-tuning: Pro picks the capture (finalProgress 46). The 5C-4b tuning run
+  // confirmed that lowering `mass` to pass this REGRESSES the ladder (pro:medium +
+  // pro:hard sum drops) — the mass term's capture-valuation is load-bearing for
+  // strength. The paranoid model DOES see the recapture; the eval rates the trade as
+  // winning because immediate captures are correctly valuable at this structure.
+  // Re-enable when the eval gains a recapture-aware capture value (price the 1-ply
+  // recapture). F-2: this is an explicit demotion with rationale, never a silent skip.
   it.skip('declines an UNFAVORABLE capture that the paranoid opponent recaptures', () => {
     // red-0 (p43, value 43) can capture green-0 at cell 46 (p33, value 33), but
     // green-1 (cell 45) recaptures red-0 on roll 1. The trade loses red's more
