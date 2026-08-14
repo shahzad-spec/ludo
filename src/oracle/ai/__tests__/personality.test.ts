@@ -140,30 +140,76 @@ describe('P-1 — Pro hunts (moves into striking range)', () => {
 });
 
 describe('P-2 — Pro targets the leader', () => {
-  // SKIPPED — 5C-4-gated (expiry: 5C-4 weight tuning). Leader-targeting depends
-  // on LEADER_TAX (×1.6) being strong enough relative to the other terms; with
-  // uncalibrated weights the preference may not reliably manifest. Build the
-  // two-capture (leader vs laggard) fixture + unskip during 5C-4. F-2: a
-  // permanent skip is a gate failure.
-  it.skip('prefers capturing the race leader\u2019s token over a laggard\u2019s', () => {
-    expect(true).toBe(true);
+  it('prefers capturing the race leader\u2019s token over a laggard\u2019s (LEADER_TAX)', () => {
+    // Two captures with EQUAL victim value (both victims p30, V=30) and equal
+    // race impact (both advance +3). Green is the strict race leader via an
+    // extra token (green-1 p10), so its token costs 30×1.6 = 48 in opponentMass
+    // vs blue's 30×1.0 = 30 — the leader capture must win by ~18 points.
+    const captureLeader = makeMove('red-0', 43, 43, true); // lands cell 43 = green-0
+    const captureLaggard = makeMove('red-1', 17, 17, true); // lands cell 17 = blue-0
+    const state = stateWithMoves(
+      {
+        'red-0': { color: 'red', progress: 40 }, // cell 40, +3 -> 43
+        'red-1': { color: 'red', progress: 14 }, // cell 14, +3 -> 17
+        'green-0': { color: 'green', progress: 30 }, // cell 43 — LEADER's token
+        'green-1': { color: 'green', progress: 10 }, // makes green the strict leader
+        'blue-0': { color: 'blue', progress: 30 }, // cell 17 — laggard's token
+      },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN' },
+      [captureLeader, captureLaggard],
+    );
+    const choice = searchBestMove(
+      state, [captureLeader, captureLaggard], 'red', { fixedDepth: 2 },
+      paranoidPolicy('red', simulateMove),
+    );
+    expect(state.validMoves).toContain(captureLeader);
+    expect(state.validMoves).toContain(captureLaggard);
+    expect(choice?.tokenIds[0]).toBe('red-0'); // takes the LEADER's token
   });
 });
 
 describe('P-4 — Pro defends a lead (risk-averse when ahead)', () => {
-  // SKIPPED — 5C-4-gated (expiry: wire advantage-scaling into evaluate, then
-  // tune). Requires riskScale to be APPLIED to the exposure term in evaluate()
-  // (currently dead code in Pro — only Hard uses it). Fixture: Pro ahead in
-  // ETF, choice between exposed +2 progress and safe-cell +1 → parks safe.
-  it.skip('parks safe when ahead rather than taking an exposed advance', () => {
-    expect(true).toBe(true);
+  it('parks on the safe star rather than an exposed higher-progress cell', () => {
+    // red clearly ahead (raceLead ~+18 → riskScale 1.5). `exposed` advances one
+    // step more but lands on cell 48 with green-0 4 behind (V=58 → exposure ≈
+    // 14.5 at ×1.5); `safe` parks on safe star 47 (green is 3 behind it, but
+    // safe cells take zero exposure). At depth 2 the paranoid reply on roll 4
+    // captures the exposed token, making this decisive.
+    // NOTE: this pins the BEHAVIOR (ahead → parks safe); it does not isolate
+    // the ×1.5 scale — see the P-5 demotion for why that isolation is
+    // unconstructible.
+    const safe = makeMove('red-0', 47, 47);
+    const exposed = makeMove('red-0', 48, 48);
+    const state = stateWithMoves(
+      {
+        'red-0': { color: 'red', progress: 43 }, // cell 43
+        'red-1': { color: 'red', progress: 30 },
+        'green-0': { color: 'green', progress: 31 }, // cell 44 — 4 behind cell 48
+      },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN' },
+      [safe, exposed],
+    );
+    const choice = searchBestMove(
+      state, [safe, exposed], 'red', { fixedDepth: 2 },
+      paranoidPolicy('red', simulateMove),
+    );
+    expect(state.validMoves).toContain(safe);
+    expect(state.validMoves).toContain(exposed);
+    expect(choice?.finalProgress).toBe(47);
   });
 });
 
 describe('P-5 — Pro gambles when behind (risk-seeking when behind)', () => {
-  // SKIPPED — 5C-4-gated (expiry: wire advantage-scaling, then tune). Same
-  // geometry as P-4 but Pro far behind → takes the exposed/capture line
-  // (captureTempoScale applied to shotPressure).
+  // DEMOTED — F-2 documented demotion with arithmetic evidence. Isolating the
+  // riskScale flip in a 2-move fixture requires the exposed dest's tokenValue V
+  // to satisfy exposure×1.0 < one-step race advantage (1/3.5 ETF × raceLead 4.0
+  // = 1.143) < exposure×1.5, i.e. V ∈ (4.57, 6.86) — dest progress 5-6 — with
+  // the safe alternative exactly one step lower AND unexposed. The safe cells in
+  // that region (0, 8, 13) sit 3-4 steps away, so any higher-progress exposed
+  // dest from the same start has V ≥ 9, whose exposure (≥ 1.5) already beats the
+  // race advantage even at ×1.0 — the fixture degenerates to "safe always wins"
+  // (which P-4 covers). The gamble-when-behind asymmetry is validated
+  // indirectly by the ladder (Pro's come-from-behind wins) instead.
   it.skip('takes an exposed line when far behind', () => {
     expect(true).toBe(true);
   });
@@ -223,10 +269,12 @@ describe('P-7 — Pro finishes when able (endgame focus)', () => {
 });
 
 describe('P-8 — Pro holds a trap square', () => {
-  // SKIPPED — 5C-4-gated (expiry: tuning + verify emergent depth). Trap-hold is
-  // the emergent product of paranoid modeling + capture extensions + shot
-  // pressure at search depth; whether it manifests at the tuned weights needs
-  // the post-tuning fixture. Build + unskip during 5C-4.
+  // DEMOTED — F-2 documented demotion. Trap-hold is emergent (paranoid modeling
+  // + capture extensions + shot pressure compounding over depth); a "hold" is a
+  // preference NOT to move, which a 2-move fixture can only express as choosing
+  // a locally-worse-looking move — indistinguishable from a bug at unit scale.
+  // Evidence venue: the placement ladder + the 5C-5 playtest (watch for Pro
+  // parking on stars ahead of pursuers).
   it.skip('holds a square that punishes a predictable opponent reply', () => {
     expect(true).toBe(true);
   });
