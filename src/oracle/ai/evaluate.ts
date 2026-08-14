@@ -64,7 +64,12 @@ export const EVAL_WEIGHTS: EvalWeights = {
  * never silently diverge (Step 0 of 5C-4b).
  */
 export const SCALE_PARAMS: { gapTurns: number; amplitude: number } = {
-  // Reverted from the 5C-4b champion (10/0.4) — it overfit; see EVAL_WEIGHTS note.
+  // Kept at the post-wiring defaults: the F-3 scale-separation experiment
+  // (this at {10,0.4} on incumbent weights, seed 42, n=30) FAILED its adoption
+  // criteria — hard:medium 101/200 = 51% (< 55%) and pro:medium 53% (< 60%).
+  // hard:medium games are Pro-independent with fixed seeds, so the champion's
+  // "57%" was tuning-seed noise. Hard-gate outcome: Hard ≈ Medium at 51%
+  // (n=200, CI ≈ [44,58]) — documented demotion from the ≥ 55% target.
   gapTurns: 15,
   amplitude: 0.5,
 };
