@@ -26,7 +26,7 @@
  */
 
 import { EVAL_WEIGHTS, SCALE_PARAMS, type EvalWeights } from '../src/oracle/ai/evaluate';
-import { playGame } from './bot-benchmark';
+import { playGame } from './game-runner';
 import type { Difficulty } from '../src/oracle/ai/types';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
