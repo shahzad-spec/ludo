@@ -31,7 +31,7 @@ export function yardExitTurns(diceCount: number): number {
 /** Worst-case one-turn stacked reach of a player holding k dice. */
 export const THREAT_REACH = (k: number): number => 6 * k;
 
-interface Multiset {
+export interface Multiset {
   /** Non-increasing (descending) dice values, length k. */
   dice: number[];
   /** Exact probability weight = multinomial(k; counts) / 6^k. */
@@ -83,6 +83,15 @@ export function sumProb(k: number, d: number): number {
     if (total === d) p += weight;
   }
   return p;
+}
+
+/**
+ * Unordered k-dice outcomes with exact weights, for the search chance node
+ * (PHASE-5D Decision 11: 21 outcomes at k=2, not 36). `dice` is DESCENDING —
+ * use as the draw sequence for a pinned RNG; the engine re-sorts identically.
+ */
+export function diceOutcomes(k: number): Multiset[] {
+  return multisets(k);
 }
 
 /** Prefix-landing threat: P(some descending prefix sum of k dice === d). */

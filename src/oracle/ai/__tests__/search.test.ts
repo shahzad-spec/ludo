@@ -10,6 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { searchBestMove, getTTStatsForTesting } from '../search';
 import { chooseBotMove } from '../policy';
 import { stateWithPlacements } from '../../__tests__/helpers';
+import { V1_RULES } from '../../config/rulesPreset';
 import type { GameState, Move } from '../../types';
 
 /** Medium policy for opponent modeling in search. */
@@ -227,4 +228,65 @@ describe('searchBestMove — capture extensions (5C-2c)', () => {
     expect(maxExtensions).toBeGreaterThan(0);
     expect(maxExtensions).toBeLessThanOrEqual(2);
   });
+});
+
+describe('searchBestMove — multi-dice chance node (5D-3c)', () => {
+  const twoDiceRules = { ...V1_RULES, diceCount: 2 as const };
+  function mv(finalProgress: number, cell: number, capture = false): Move {
+    return {
+      tokenIds: ['red-0'], path: [{ kind: 'track', cell }], finalProgress,
+      isCapture: capture, isEnteringHome: false, isEnteringBoard: false, isFinishing: false,
+    };
+  }
+
+  it('k=2: deterministic — same input + fixedDepth = same pick', () => {
+    const a = mv(12, 12);
+    const b = mv(14, 14);
+    const state = stateWithMoves(
+      {
+        'red-0': { color: 'red', progress: 10 },
+        'green-0': { color: 'green', progress: 20 },
+        'green-1': { color: 'green', progress: 5 },
+      },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN', rules: twoDiceRules },
+      [a, b],
+    );
+    const r1 = searchBestMove(state, [a, b], 'red', { fixedDepth: 3 }, mediumPolicy);
+    const r2 = searchBestMove(state, [a, b], 'red', { fixedDepth: 3 }, mediumPolicy);
+    expect(r1?.finalProgress).toBe(r2?.finalProgress);
+  });
+
+  it('k=2: still captures when no downside (multiset node drives real set play)', () => {
+    const safe = mv(7, 7);
+    const capture = mv(9, 9, true);
+    const state = stateWithMoves(
+      {
+        'red-0': { color: 'red', progress: 5 },
+        'green-0': { color: 'green', progress: 48 },
+      },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN', rules: twoDiceRules },
+      [safe, capture],
+    );
+    const result = searchBestMove(state, [safe, capture], 'red', { fixedDepth: 2 }, mediumPolicy);
+    expect(result?.isCapture).toBe(true);
+  });
+
+  it('PERF GATE: depth 4 completes under 120ms at diceCount 2', () => {
+    const m1 = mv(12, 12);
+    const m2 = mv(14, 14);
+    const state = stateWithMoves(
+      {
+        'red-0': { color: 'red', progress: 10 },
+        'green-0': { color: 'green', progress: 20 },
+        'green-1': { color: 'green', progress: 5 },
+      },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN', rules: twoDiceRules },
+      [m1, m2],
+    );
+    const t0 = performance.now();
+    searchBestMove(state, [m1, m2], 'red', { fixedDepth: 4 }, mediumPolicy);
+    const elapsed = performance.now() - t0;
+    console.log(`[perf] depth 4 @ diceCount 2: ${elapsed.toFixed(1)}ms`);
+    expect(elapsed).toBeLessThan(120);
+  }, 30000);
 });

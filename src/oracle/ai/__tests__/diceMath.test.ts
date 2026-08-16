@@ -86,3 +86,17 @@ describe('sumProb — SUM-TABLE invariants (pinned HERE, on sumProb, and FORBIDD
     expect(total).toBeGreaterThan(1); // one 2-dice set threatens ~2 distinct distances
   });
 });
+
+describe('diceOutcomes — multiset enumeration for the search chance node', () => {
+  it('counts: 6 / 21 / 56 / 126 at k=1..4; weights sum to 1', async () => {
+    const { diceOutcomes } = await import('../diceMath');
+    expect(diceOutcomes(1)).toHaveLength(6);
+    expect(diceOutcomes(2)).toHaveLength(21);
+    expect(diceOutcomes(3)).toHaveLength(56);
+    expect(diceOutcomes(4)).toHaveLength(126);
+    for (let k = 1; k <= 4; k++) {
+      const total = diceOutcomes(k).reduce((a, o) => a + o.weight, 0);
+      expect(total).toBeCloseTo(1, 12);
+    }
+  });
+});

@@ -26,6 +26,7 @@ import type { Color } from '../board/track';
 import type { SearchOptions } from './types';
 import { applyAction } from '../engine';
 import { evaluate } from './evaluate';
+import { diceOutcomes } from './diceMath';
 
 /** Opponent model — injected to break circular dependency with policy.ts. */
 export type OpponentPolicy = (state: GameState, moves: Move[]) => Move | null;
@@ -88,6 +89,24 @@ function simulateRoll(state: GameState, roll: number): GameState {
   return r2.state;
 }
 
+/**
+ * Simulate a full k-dice SET (PHASE-5D 5D-3c): a pinned RNG draws the given
+ * descending sequence (the engine sorts the queue identically), then the roll
+ * resolves — burn-loop included — through the real engine.
+ */
+function simulateRollSet(state: GameState, dice: number[]): GameState {
+  let i = 0;
+  const rng = () => {
+    const v = dice[Math.min(i, dice.length - 1)];
+    i++;
+    return (v - 1) / 6;
+  };
+  const r1 = applyAction(state, { type: 'REQUEST_ROLL' }, rng);
+  const head = r1.state.dice.queue[0] ?? dice[0];
+  const r2 = applyAction(r1.state, { type: 'RESOLVE_ROLL', value: head });
+  return r2.state;
+}
+
 /** TT key: full token-progress signature + current player + phase + depth + extensions. */
 function ttKey(state: GameState, depth: number, extensions: number): string {
   let sig = '';
@@ -143,6 +162,38 @@ function expectimax(
   return expectimaxExpand(state, depth, me, opponentPolicy, shouldStop, extensions);
 }
 
+/** Value of a post-roll state: my SELECTING → max over moves; opponent's →
+ *  policy; anything else (burned set / pass) → continue the recursion. */
+function evaluateRolled(
+  rolled: GameState,
+  depth: number,
+  me: Color,
+  opponentPolicy: OpponentPolicy,
+  shouldStop: () => boolean,
+  extensions: number,
+): number {
+  if (rolled.phase === 'SELECTING_TOKEN') {
+    if (rolled.currentPlayer === me) {
+      const myMoves = rolled.validMoves;
+      if (myMoves.length > 0) {
+        let best = -Infinity;
+        for (const m of myMoves) {
+          const [cd, ce] = childDepthAfter(depth, extensions, m);
+          const val = expectimax(simulate(rolled, m), cd, me, opponentPolicy, shouldStop, ce);
+          if (val > best) best = val;
+        }
+        return best;
+      }
+      return expectimax(rolled, depth - 1, me, opponentPolicy, shouldStop, extensions);
+    }
+    const oppMove = opponentPolicy(rolled, rolled.validMoves);
+    const [cd, ce] = childDepthAfter(depth, extensions, oppMove);
+    return expectimax(simulate(rolled, oppMove), cd, me, opponentPolicy, shouldStop, ce);
+  }
+  // NO_LEGAL_MOVE / fully burned set → turn passed automatically by engine.
+  return expectimax(rolled, depth - 1, me, opponentPolicy, shouldStop, extensions);
+}
+
 /** The phase-aware branching (amendment A) — no TT, called via expectimax(). */
 function expectimaxExpand(
   state: GameState,
@@ -153,36 +204,24 @@ function expectimaxExpand(
   extensions: number,
 ): number {
   if (state.phase === 'IDLE') {
-    // Chance node: enumerate all 6 dice rolls
+    // Chance node (5D-3c, Decision 11): k=1 enumerates the six single rolls
+    // (byte-identical v1 path); k>=2 enumerates unordered multisets with exact
+    // probability weights (21 at k=2, not 36) and resolves each set
+    // sequentially — no allocation branching.
+    const k = state.rules.diceCount;
     let sum = 0;
-    for (let roll = 1; roll <= 6; roll++) {
-      const rolled = simulateRoll(state, roll);
-
-      if (rolled.phase === 'SELECTING_TOKEN') {
-        if (rolled.currentPlayer === me) {
-          const myMoves = rolled.validMoves;
-          if (myMoves.length > 0) {
-            let best = -Infinity;
-            for (const m of myMoves) {
-              const [cd, ce] = childDepthAfter(depth, extensions, m);
-              const val = expectimax(simulate(rolled, m), cd, me, opponentPolicy, shouldStop, ce);
-              if (val > best) best = val;
-            }
-            sum += best;
-          } else {
-            sum += expectimax(rolled, depth - 1, me, opponentPolicy, shouldStop, extensions);
-          }
-        } else {
-          const oppMove = opponentPolicy(rolled, rolled.validMoves);
-          const [cd, ce] = childDepthAfter(depth, extensions, oppMove);
-          sum += expectimax(simulate(rolled, oppMove), cd, me, opponentPolicy, shouldStop, ce);
-        }
-      } else {
-        // NO_LEGAL_MOVE → turn passed automatically by engine.
-        sum += expectimax(rolled, depth - 1, me, opponentPolicy, shouldStop, extensions);
+    if (k === 1) {
+      for (let roll = 1; roll <= 6; roll++) {
+        sum += evaluateRolled(simulateRoll(state, roll), depth, me, opponentPolicy, shouldStop, extensions);
       }
+      return sum / 6;
     }
-    return sum / 6;
+    for (const { dice, weight } of diceOutcomes(k)) {
+      sum +=
+        weight *
+        evaluateRolled(simulateRollSet(state, dice), depth, me, opponentPolicy, shouldStop, extensions);
+    }
+    return sum;
   }
 
   // SELECTING_TOKEN — my turn: max node
