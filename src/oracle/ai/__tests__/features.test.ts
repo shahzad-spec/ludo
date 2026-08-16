@@ -331,3 +331,15 @@ describe('leaderUrgency + effectiveLeaderTax (5C-6 step 3)', () => {
     expect(effectiveLeaderTax(urgent, 'red')).toBeGreaterThan(LEADER_TAX);
   });
 });
+
+describe('safeHaven — one-roll window (5C-7: B-4 rule)', () => {
+  it('NOT hot when the lurker needs 7+ (threat that cannot materialize in one roll)', () => {
+    // red-0 safe star cell 8; blue-0 9 behind (cell 51 = blue p12). The old 1-12
+    // window counted this as hot — the overcorrection. A 7+ lurker must NOT.
+    const state = stateWithPlacements({
+      'red-0': { color: 'red', progress: 8 },
+      'blue-0': { color: 'blue', progress: 12 }, // cell 51, 9 behind
+    });
+    expect(safeHaven(state, 'red')).toBe(0);
+  });
+});

@@ -63,9 +63,9 @@ export const EVAL_WEIGHTS: EvalWeights = {
   spread: 3.0,
   homeLoaded: 2.0,
   finishGap: 12.0,
-  ambush: 0.45,
+  ambush: 0.2, // 5C-7: 0.45 -> 0.2 (stacking overcorrection)
   anticipDanger: -0.5,
-  safeHaven: 1.5,
+  safeHaven: 0.8, // 5C-7: 1.5 -> 0.8
 };
 
 /**
@@ -110,7 +110,7 @@ export function evaluate(
     weights.spread * spread(state, me) +
     weights.homeLoaded * homeLoaded(state, me) +
     weights.finishGap * finishGap(state, me) +
-    weights.ambush * cScale * ambushPressure(state, me) +
+    weights.ambush * ambushPressure(state, me) + // 5C-7: no desperation multiplier (compounding softened; tax remains)
     weights.anticipDanger * rScale * anticipationDanger(state, me) +
     weights.safeHaven * safeHaven(state, me)
   );

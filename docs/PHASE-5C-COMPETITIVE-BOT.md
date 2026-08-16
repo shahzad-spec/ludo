@@ -467,7 +467,105 @@ Unit tests (5C-1 gate):
 | **5C-2** | Paranoid model + TT + capture extensions; P-1…P-8 behavioral tests | ~1 d | Existing search tests green · perf: p95 ≤ 120 ms desktop on benchmark position · lint + build clean · structural P-tests green · weight-sensitive P-tests committed as documented `it.skip` (F-2). **Progress:** 2a/2b/2c shipped (`490bf2a`, `2665c6f`, `895b859` + audit fix `0ae4c3c`); P-3 fixture + weight-coupling finding committed (`166070c`). Hard full-eval wiring rejected (F-1). **Remaining:** structural P-tests (hunt, spread, endgame) |
 | **5C-3** | `tools/bot-benchmark.ts` — placement ladder via vite-node (`.mjs` replaced: plain Node can't import TS; vite-node is headless, no browser/R3F, outside vitest CI), seeded, placement proxy (v1 ends at first winner — documented), mean turns-to-finish stall early-warning | ~0.5 d | ✅ Shipped (`9a70473`): `npm run bench` + committed baseline `docs/reports/5C-baseline.md` (seed 42). Headline: **Pro 40% vs Medium at pre-tuning weights** — but n=10 (CI ≈ [12%, 74%]); direction matches F-2, number not yet tunable. Hard 51% vs Medium (anomaly improved from 18%, not closed) |
 | **5C-4** | **Prerequisite step:** wire advantage-scaling into `evaluate()` — exposure term × `riskScale`, shotPressure term × `captureTempoScale` (enables P-4/P-5; re-run frozen gate — the two sign-test fixtures have zero exposure, so they must stay green). Regenerate baseline post-wiring (Pro rows ≥ 30 games — n=10 is noise for hill-climbing). Then offline weight tuning (coordinate ascent on `EVAL_WEIGHTS`; Hard's lever is the shared ETF-anchored scale constants, not `EVAL_WEIGHTS` — F-1), seeded tournaments, champion weights committed | ~1 d + overnight runs | **Outcome:** wiring ✅ shipped (`08c048e`) — the substantive win (Pro now beats Medium). Tuning ran overnight (harness `e2ef915`) but the champion **overfit the n=30 noise band and was rejected** (F-3, `df6d702`); incumbent kept. Remaining: scale-separation experiment (F-3), remaining P-tests green-or-demoted, then 5C-5 |
-| **5C-5** | Human playtest + feel pass | ~0.5 d | Playtest checklist: bot visibly hunts / targets leader / traps at least once per game vs Pro · **user sign-off** |
+| **5C-5** | Human playtest + feel pass | ~0.5 d | Playtest checklist: bot visibly hunts / targets leader / traps at least once per game vs Pro · **user sign-off**. **Status: sign-off WITHHELD** — playtest surfaced two behavioral findings (B-1, B-2 below); fixes land as 5C-6, then re-playtest |
+
+### 5C-5 Playtest findings (human, vs Pro, real game)
+
+**B-1 — Leaves safety when a safe alternative exists.** A bot token voluntarily
+left a safe star (freeing two waiting opponents) despite having a move that
+kept safe occupancy. *Diagnosis (verified in code):* the eval prices risky
+destinations (`totalExposure`) but pays **nothing for occupying safe cells** —
+and prices **opponents behind a safe token at exactly zero**, even though
+geometry forces them to pass through the strike zone (future prey = 0 value
+today; same root as demoted P-8, now evidenced live). *Rules caveat:* exit
+cells are safe, so door-camping never catches a fresh exit — ambush pays 1+
+moves after exit. It is an anticipation problem by construction.
+
+**B-2 — No sniping urgency against the about-to-winner.** Red had a near-winning
+token at distance 9; green rolled 6 and did not move into sniping position.
+*Diagnosis (record corrected):* creating a shot scores **exactly zero** today
+(the 1/6 discount applies only to existing 1–6 shots). The desperation
+machinery *did* fire — negative `raceLead` → `captureTempoScale` maxed at 1.5 —
+with **nothing to multiply** (no current shot). Missing: (a) an anticipatory
+term for the multiplier to act on; (b) `LEADER_TAX` scaled by the leader's
+turns-to-finish (`colorETF` already computes it) so a near-winner's tokens
+outvalue a generic leader's.
+
+**Common root (both findings):** the leaf eval prices only the current 1–6
+band in both directions; everything beyond the search horizon is zero.
+
+**5C-6 scope (amended, three features):**
+1. **Anticipation band** (the shared root): opponents 7–12 behind my **safe**
+   token = future prey (ambush value); 7–12 behind my **exposed** token =
+   future danger (widened exposure). One parameterized band, discounted.
+   Band constants live in named exports so multi-dice later widens them
+   (that's most of the bot-side migration).
+2. **`safeHaven`**: small, proximity-weighted value for own tokens on safe
+   cells. F-1 stall risk is real — weight small, proximity-conditional,
+   stall-guard is a hard gate.
+3. **Leader-urgency scaling**: `LEADER_TAX` amplified by the leader's
+   `colorETF` (near-winner tokens worth more). Frozen-gate brush point:
+   inflates `opponentMass` — pre-analysis says both pinned sign fixtures hold
+   (ahead-fixture opponents are in yard; behind-fixture stays negative);
+   verify empirically; a genuine conflict is a decision point, never silently
+   tuned around.
+
+**Acceptance (F-3 discipline):** fixtures reproducing both playtest geometries
++ frozen gate + stall-guard (100% termination, mean turns ≤ 2500) + depth-4
+perf check + user re-playtest. Bench is regression-only — **zero
+ladder-adoption claims**; n=30 cannot confirm deltas this small.
+
+### 5C-5 Re-playtest findings #2 — 5C-6 OVERCORRECTED (findings B-3/B-4)
+
+5C-6 shipped (`91cd0a3`, `5fa86a2`, `249c597`, stall-guard `405e24b`, 308
+tests). Re-playtest surfaced the mirror defect: the bot now **camps**.
+
+**B-3 — Safety-stack jam.** Bot tokens refuse to advance past opponent tokens
+parked on safe cells ahead; they stack on safe cells instead of passing. Yet
+the same tokens show little fear of real threats coming from behind.
+*Diagnosis:* stay-terms outweigh move-terms. Leaving a hot haven costs
+`safeHaven` (1.5/haven) + the `ambushPressure` post (up to ~20+ eval points:
+(1/6)×victimValue×bandFactor×LEADER_TAX(≤2.4)×cScale(≤1.5) × weight 0.45),
+while advancing gains only raceLead (~+4.6 per 4 steps). Stay wins; multiple
+tokens stay → visible stacking. Meanwhile flight is weak: `anticipDanger`
+−0.5 discounted — retention ≫ flight.
+
+**B-4 — Safety chosen over a REAL capture.** Blue had a capture available but
+moved to a safe cell instead — despite already being safe, with the nearest
+opponent needing 7+ to reach ("which looks difficult"). *Diagnosis:* the
+discounted 7–12 band still drives decisions: hot-haven status and
+`anticipationDanger` both fire on threats that cannot materialize in one roll,
+and the ambush-post retention loss outbids a modest capture swing. The user's
+instinct is the correct rule: **a threat that needs 7+ should not outbid a
+real capture.**
+
+**Common root:** retention terms (safeHaven + ambushPressure, with up to 3.6×
+compounding amplifiers) are overweighted relative to capture value, flight,
+and progress. 5C-6 cured "leaves safety too easily" and produced "never
+leaves safety."
+
+**5C-7 scope (fixture-first rebalance):**
+1. **Capture-dominance invariant (B-4 fixture):** real capture available +
+   only 7+ threats present → Pro captures. Candidate levers: hot-haven
+   requires threat ≤ 6 (not the full 7–12 band); drop/soften the
+   cScale×leader-tax compounding on `ambushPressure`; weight cuts
+   (safeHaven 1.5→~0.8, ambush 0.45→~0.2 as starting points).
+2. **Pass-through fixture (B-3):** token on safe, only distant threats,
+   progress available → Pro advances instead of stacking.
+3. **Flight fixture (B-3's second half):** exposed token, real threat 1–6
+   behind → Pro flees (behind-fear must be as real as ahead-fear).
+4. **Hold the 5C-6 wins:** B-1 (hold safe star vs real approaching threat) and
+   B-2 (snipe setup vs near-winner) fixtures MUST stay green — the fix is
+   rebalance, not revert.
+5. Gates: frozen gate + stall-guard + depth-4 perf + re-playtest. Bench
+   regression-only; zero ladder-adoption claims (F-3).
+
+**Feature request logged (separate workstream, user-driven):** multi-dice mode
+(2–4 dice, values assignable to same/different tokens) to speed the game and
+enable long-range hunting ("sniping from far behind"), plus a standing
+safety-seeking instinct for exposed tokens. This **overturns** the R&S §6.2
+"two-dice — likely never" backlog entry per its own overturn condition ("only
+if core to vision"). Design doc required; see roadmap.
 
 **Stop conditions (project discipline):**
 - If a 5C-1/5C-2 gate fails on a *prior* test, the change is wrong — prior

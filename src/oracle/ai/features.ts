@@ -262,7 +262,9 @@ export function ambushPressure(state: GameState, me: Color): number {
 
 /**
  * Hot-haven count (5C-6 step 2): my tokens on safe shared-loop cells with at
- * least one opponent lurking behind within the anticipation band. Deliberately
+ * least one opponent lurking behind within ONE-ROLL reach (1-6). The 5C-7
+ * rule (playtest B-4): a threat that cannot materialize in one roll must never
+ * make a haven hot. Deliberately
  * proximity-conditional — a COLD safe cell is worth nothing, which is the
  * anti-F-1 guard (no parking meter; the cold-haven test pins this). The
  * haven premium makes abandoning a hot ambush position cost something.
@@ -279,7 +281,7 @@ export function safeHaven(state: GameState, me: Color): number {
       if (o.progress < 0 || o.progress > 50) return false;
       const oCell = (ENTRY_OFFSET[o.color] + o.progress) % SHARED_LOOP_LENGTH;
       const behind = loopDelta(oCell, cell);
-      return behind >= 1 && behind <= ANTICIPATION_BAND_MAX;
+      return behind >= 1 && behind <= 6; // 5C-7: one-roll reach only
     });
     if (lurked) havens++;
   }

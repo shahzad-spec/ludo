@@ -363,3 +363,92 @@ describe('5C-6 — endgame snipe: Pro sets up the capture on a near-winner (play
     expect(choice?.tokenIds[0]).toBe('red-0'); // takes the snipe setup
   });
 });
+
+describe('5C-7-A — capture dominance guard (B-4 rule: 7+ threat never outbids a capture)', () => {
+  // NOTE: regression GUARD, not a red driver — a real capture's opponentMass
+  // gain (~V of the victim) mathematically dominates any 7-12-band camping
+  // value; it pins the user's rule so no future rebalance can violate it.
+  it('captures a small victim rather than keeping a stacked 7-12-lurker haven', () => {
+    // red-0 sits on safe star cell 8; a juicy green token (V=30) lurks 9 behind
+    // (cell 51 = green p38) — old window made this haven hot AND paid ambush for
+    // it. Alternative moves for red-0: capture yellow-0 (small victim, V=5) at
+    // cell 16 (red-0 p8 -> +8 = p16), landing exposed with green 9 behind — or
+    // sidestep to another safe cell (star 13 is not reachable +5 from 8; use
+    // green start? not safe for red... cell 8 -> advance +5 = cell 13, green
+    // start IS a safe cell) keeping the lurker in the old 1-12 window.
+    const capture = makeMove('red-0', 16, 16, true); // takes yellow-0 (V=5)
+    const parkSafe = makeMove('red-0', 13, 13); // green start, safe; lurker 4 behind... stays hot
+    const state = stateWithMoves(
+      {
+        'red-0': { color: 'red', progress: 8 }, // cell 8, safe star
+        'green-0': { color: 'green', progress: 38 }, // cell 51, 9 behind cell 8
+        'yellow-0': { color: 'yellow', progress: 42 }, // cell 16 (26+42)%52
+      },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN' },
+      [capture, parkSafe],
+    );
+    const choice = searchBestMove(
+      state, [capture, parkSafe], 'red', { fixedDepth: 1 },
+      paranoidPolicy('red', simulateMove),
+    );
+    expect(state.validMoves).toContain(capture);
+    expect(state.validMoves).toContain(parkSafe);
+    expect(choice?.isCapture).toBe(true);
+  });
+});
+
+describe('5C-7-B — pass-through (B-3: no stacking on distant threats)', () => {
+  it('advances the parked token when the only threat is beyond one roll', () => {
+    // Stacking reproduction (the playtest geometry, quantified): red-0 on safe
+    // star 8; the lurker is a FAT leader-urgent token — green-0 p38 (V=38,
+    // cell 51, 9 behind) with green's other 3 tokens finished (tax 2.31) — and
+    // red is far behind (desperation 1.5). Under 5C-6 weights camping paid
+    // haven 1.5 + ambush ~4.9 = 6.4 vs the 4.6 race delta -> stacked. With the
+    // 5C-7 levers (haven cold at 7+, ambush 0.2 no-desperation) camping is
+    // worth ~1.5 and the race step wins -> passes.
+    const pass = makeMove('red-0', 14, 14); // +6 through
+    const other = makeMove('red-1', 22, 22); // +2 only
+    const state = stateWithMoves(
+      {
+        'red-0': { color: 'red', progress: 8 }, // safe star
+        'red-1': { color: 'red', progress: 20 },
+        'green-0': { color: 'green', progress: 38 }, // cell 51, 9 behind, V=38
+        'green-1': { color: 'green', progress: 56 },
+        'green-2': { color: 'green', progress: 56 },
+        'green-3': { color: 'green', progress: 56 },
+      },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN' },
+      [pass, other],
+    );
+    const choice = searchBestMove(
+      state, [pass, other], 'red', { fixedDepth: 1 },
+      paranoidPolicy('red', simulateMove),
+    );
+    expect(state.validMoves).toContain(pass);
+    expect(state.validMoves).toContain(other);
+    expect(choice?.tokenIds[0]).toBe('red-0'); // passes, does not stack
+  });
+});
+
+describe('5C-7-C — flight (B-3b: behind-fear as real as ahead-fear)', () => {
+  it('an exposed token with a 1-6 threat lands on the safe star, not higher progress', () => {
+    // red-0 at p43 (cell 43, exposed); blue-0 4 behind (cell 39+... blue p0 =
+    // cell 39, 4 behind 43). Same-token choice: +4 to safe star 47 vs +5 to
+    // exposed 48. Exposure (1-6 band, full weight) must drive the pick.
+    const toSafe = makeMove('red-0', 47, 47);
+    const toExposed = makeMove('red-0', 48, 48);
+    const state = stateWithMoves(
+      {
+        'red-0': { color: 'red', progress: 43 },
+        'blue-0': { color: 'blue', progress: 0 }, // cell 39, 4 behind
+      },
+      { currentPlayer: 'red', phase: 'SELECTING_TOKEN' },
+      [toSafe, toExposed],
+    );
+    const choice = searchBestMove(
+      state, [toSafe, toExposed], 'red', { fixedDepth: 1 },
+      paranoidPolicy('red', simulateMove),
+    );
+    expect(choice?.finalProgress).toBe(47);
+  });
+});

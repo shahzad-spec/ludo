@@ -1,6 +1,6 @@
 # 5C Baseline — Placement Ladder
 
-> Generated 2026-08-14, seed 42, games: non-Pro 200, Pro 30.
+> Generated 2026-08-16, seed 42, games: non-Pro 200, Pro 30.
 > Weights: committed `EVAL_WEIGHTS` + `SCALE_PARAMS` (see src/oracle/ai/evaluate.ts). Hard = v1 `scoreMove` (F-1).
 > **Placement proxy:** v1 ends at the first winner (`win.ts:34`), so 1st = winner;
 > 2nd–4th ranked by finished-token count then colorETF. "A beats B" = rank(A) < rank(B).
@@ -13,8 +13,8 @@
 | medium:easy | 200 | 60% | 2.18 | 2.57 | 100% |
 | hard:easy | 200 | 62% | 2.1 | 2.6 | 100% |
 | hard:medium | 200 | 51% | 2.29 | 2.36 | 100% |
-| pro:medium | 30 | 60% | 2.03 | 2.43 | 100% |
-| pro:hard | 30 | 50% | 2.2 | 2.17 | 100% |
+| pro:medium | 30 | 57% | 2.3 | 2.57 | 100% |
+| pro:hard | 30 | 53% | 2.07 | 2.33 | 100% |
 
 ## Mean turns-to-finish per pairing (F-1 stall early-warning; lower = faster)
 
@@ -23,8 +23,8 @@
 | medium:easy | 1867 |
 | hard:easy | 1809 |
 | hard:medium | 1853 |
-| pro:medium | 1886 |
-| pro:hard | 1706 |
+| pro:medium | 1913 |
+| pro:hard | 1684 |
 
 ## Target gates (5C-4)
 
