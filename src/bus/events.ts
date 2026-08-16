@@ -41,7 +41,15 @@ export type GameEvent =
       victimId: string;
       cell: number; // shared-loop cell where the capture occurred
     }
-  | { type: 'TURN_CHANGED'; nextPlayer: Color }
+  | { type: 'DIE_BURNED'; player: Color; value: number }
+  | {
+      type: 'TURN_CHANGED';
+      nextPlayer: Color;
+      /** Present (true) ONLY on the new extra-turn announce (PHASE-5D): the
+       *  turn did NOT pass — same player rolls again. Absent on every
+       *  v1-identical pass emission, so prior exact-shape assertions hold. */
+      extraTurn?: true;
+    }
   | { type: 'PLAYER_WON'; player: Color };
 
 /** Listener type keyed by event type. */

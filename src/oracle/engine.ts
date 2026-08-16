@@ -66,42 +66,73 @@ function handleRequestRoll(state: GameState, rng: () => number): ApplyResult {
   };
 }
 
+/**
+ * Burn unplayable dice from the head of the queue (PHASE-5D 5D-1c, Decision 4).
+ * Stops when a die has legal moves (→ SELECTING_TOKEN) or the queue empties
+ * (the CALLER resolves the turn). DIE_BURNED fires only at diceCount > 1 — at
+ * count 1 the bare NO_LEGAL_MOVE route is byte-identical v1, so no extra event
+ * may appear. Mutates `events` by push; returns the advanced state.
+ */
+function advanceQueueToPlayableDie(state: GameState, events: GameEvent[]): GameState {
+  let cur = state;
+  while (cur.dice.queue.length > 0) {
+    const head = cur.dice.queue[0];
+    const moves = getLegalMoves(cur, head);
+    if (moves.length > 0) {
+      return patch(cur, { phase: 'SELECTING_TOKEN', validMoves: moves });
+    }
+    const rest = cur.dice.queue.slice(1);
+    if (cur.rules.diceCount > 1) {
+      events.push({ type: 'DIE_BURNED', player: cur.currentPlayer, value: head });
+    }
+    cur = patch(cur, {
+      dice: { ...cur.dice, queue: rest, value: rest[0] ?? null },
+    });
+  }
+  return cur; // queue empty — caller resolves the turn
+}
+
 function handleResolveRoll(state: GameState, value: number): ApplyResult {
   if (state.phase !== 'ROLLING') return reject(state);
 
-  const moves = getLegalMoves(state, value);
-
-  // No legal move: pass the turn and notify. The current player's roll is
-  // wasted. consecutiveSixes is reset on pass.
-  if (moves.length === 0) {
-    const advanced = resolveTurn(
-      state,
-      value === 6,
-      false, // no capture
-      value === 6 ? state.consecutiveSixes + 1 : 0,
+  // A1/A2.2: the queue head is authoritative for move computation. The legacy
+  // action.value is accepted for contract stability; a disagreement is a bug
+  // in the caller — warn loudly in DEV, never branch on it.
+  if (import.meta.env?.DEV && state.dice.queue.length > 0 && value !== state.dice.queue[0]) {
+    console.warn(
+      `RESOLVE_ROLL value (${value}) !== queue head (${state.dice.queue[0]}) — the queue is authoritative.`,
     );
-    const next = patch(state, {
-      phase: 'IDLE',
-      dice: clearedDice(),
-      validMoves: [],
-      currentPlayer: advanced.nextPlayer,
-      consecutiveSixes: 0,
-    });
-    const events: GameEvent[] = [
-      { type: 'NO_LEGAL_MOVE', player: state.currentPlayer, value },
-    ];
-    if (advanced.advanced) {
-      events.push({ type: 'TURN_CHANGED', nextPlayer: advanced.nextPlayer });
-    }
-    return { state: next, events };
   }
 
-  // Legal moves exist → wait for the player to pick a token.
+  const events: GameEvent[] = [];
+  const afterBurns = advanceQueueToPlayableDie(state, events);
+  if (afterBurns.phase === 'SELECTING_TOKEN') {
+    return { state: afterBurns, events };
+  }
+
+  // The set fully burned with no move played → the v1 NO_LEGAL_MOVE route,
+  // byte-identical at diceCount 1, with set-aware six-counting (Decision 5):
+  // ANY six in the rolled set counts, exactly once.
+  const setHasSix = state.dice.rolledSet.includes(6);
+  const firstHead = state.dice.queue[0] ?? value;
+  const advanced = resolveTurn(
+    state,
+    setHasSix,
+    false, // no capture
+    setHasSix ? state.consecutiveSixes + 1 : 0,
+  );
   const next = patch(state, {
-    phase: 'SELECTING_TOKEN',
-    validMoves: moves,
+    phase: 'IDLE',
+    dice: clearedDice(),
+    validMoves: [],
+    currentPlayer: advanced.nextPlayer,
+    consecutiveSixes: 0,
   });
-  return { state: next, events: [] };
+  events.push({ type: 'NO_LEGAL_MOVE', player: state.currentPlayer, value: firstHead });
+  if (advanced.advanced) {
+    events.push({ type: 'TURN_CHANGED', nextPlayer: advanced.nextPlayer });
+  }
+  return { state: next, events };
 }
 
 function pickMove(state: GameState, tokenId: string): Move | null {

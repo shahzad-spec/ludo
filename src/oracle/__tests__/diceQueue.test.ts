@@ -12,6 +12,7 @@ import { describe, it, expect } from 'vitest';
 import { applyAction, createInitialState } from '../engine';
 import { V1_RULES, soloRules } from '../config/rulesPreset';
 import { pinnedRng } from '../rules/dice';
+import { stateWithPlacements } from './helpers';
 import type { GameState } from '../types';
 
 /** The A1 alias + A2.1 clearing invariant, checked everywhere. */
@@ -138,5 +139,106 @@ describe('multi-die REQUEST_ROLL (5D-1b)', () => {
     const rejected = applyAction(state, { type: 'REQUEST_ROLL' }, pinnedRng([1, 1]));
     expect(rejected.state).toBe(state); // same reference — unchanged
     expect(rejected.events).toEqual([]);
+  });
+});
+
+/** Craft a ROLLING state with an explicit queue (new-test-only; prior tests
+ *  never hand-write dice — they drive the engine). */
+function rollingWithQueue(
+  placements: Parameters<typeof stateWithPlacements>[0],
+  queue: number[],
+  rules = V1_RULES,
+): GameState {
+  return stateWithPlacements(placements, {
+    currentPlayer: 'red',
+    phase: 'ROLLING',
+    rules,
+    dice: { queue, rolledSet: [...queue].sort((a, b) => a - b), value: queue[0], rolled: true, capturedInSet: false },
+  });
+}
+
+describe('RESOLVE_ROLL + burn-loop (5D-1c)', () => {
+  const twoDice = { ...V1_RULES, diceCount: 2 as const };
+
+  it('burns an unplayable head die and continues to a playable one', () => {
+    // Every red token overshoots on 6 (p51-53 + 6 > 56) but is legal on 3.
+    const state = rollingWithQueue(
+      {
+        'red-0': { color: 'red', progress: 51 },
+        'red-1': { color: 'red', progress: 52 },
+        'red-2': { color: 'red', progress: 53 },
+        'red-3': { color: 'red', progress: 53 },
+      },
+      [6, 3],
+      twoDice,
+    );
+    const res = applyAction(state, { type: 'RESOLVE_ROLL', value: 6 });
+    expect(res.events).toEqual([{ type: 'DIE_BURNED', player: 'red', value: 6 }]);
+    expect(res.state.phase).toBe('SELECTING_TOKEN');
+    expect(res.state.dice.queue).toEqual([3]);
+    expect(res.state.dice.value).toBe(3);
+    expect(res.state.validMoves.length).toBeGreaterThan(0);
+    expectDiceInvariants(res.state);
+  });
+
+  it('fully burned set lands on the v1 NO_LEGAL_MOVE route (turn pass, dice cleared)', () => {
+    // All-yard + no six in the set → nothing playable at all.
+    let state = createInitialState(undefined, twoDice);
+    state = applyAction(state, { type: 'REQUEST_ROLL' }, pinnedRng([3, 2])).state;
+    const res = applyAction(state, { type: 'RESOLVE_ROLL', value: 3 });
+    expect(res.events).toEqual([
+      { type: 'DIE_BURNED', player: 'red', value: 3 },
+      { type: 'DIE_BURNED', player: 'red', value: 2 },
+      { type: 'NO_LEGAL_MOVE', player: 'red', value: 3 },
+      { type: 'TURN_CHANGED', nextPlayer: 'green' },
+    ]);
+    expect(res.state.phase).toBe('IDLE');
+    expect(res.state.currentPlayer).toBe('green');
+    expect(res.state.dice.queue).toEqual([]);
+    expectDiceInvariants(res.state);
+  });
+
+  it('a six in a FULLY BURNED set still counts (extra turn granted, count reset)', () => {
+    // All red at p54: every die 2..6 overshoots; the rolled 6 burned but the
+    // SET contains it → sixGrantsExtraTurn keeps the turn (Decision 5), with
+    // consecutiveSixes reset by the v1 pass route.
+    const state = rollingWithQueue(
+      {
+        'red-0': { color: 'red', progress: 54 },
+        'red-1': { color: 'red', progress: 54 },
+        'red-2': { color: 'red', progress: 54 },
+        'red-3': { color: 'red', progress: 54 },
+      },
+      [6, 3],
+      twoDice,
+    );
+    const res = applyAction(state, { type: 'RESOLVE_ROLL', value: 6 });
+    expect(res.events.map((e) => e.type)).toEqual(['DIE_BURNED', 'DIE_BURNED', 'NO_LEGAL_MOVE']);
+    expect(res.state.currentPlayer).toBe('red'); // extra turn — the set had a 6
+    expect(res.state.consecutiveSixes).toBe(0); // v1 pass route resets
+    expectDiceInvariants(res.state);
+  });
+
+  it('count 1 no-move is BYTE-IDENTICAL v1: NO_LEGAL_MOVE only, never DIE_BURNED', () => {
+    let state = createInitialState(); // V1_RULES, diceCount 1
+    state = applyAction(state, { type: 'REQUEST_ROLL' }, pinnedRng([3])).state;
+    const res = applyAction(state, { type: 'RESOLVE_ROLL', value: 3 });
+    expect(res.events).toEqual([
+      { type: 'NO_LEGAL_MOVE', player: 'red', value: 3 },
+      { type: 'TURN_CHANGED', nextPlayer: 'green' },
+    ]);
+    expect(res.state.currentPlayer).toBe('green');
+    expectDiceInvariants(res.state);
+  });
+
+  it('move computation follows the QUEUE HEAD, not the legacy action.value', () => {
+    // All-yard, queue [6,2]: the head 6 frees a yard token even though a stale
+    // action claims value 2.
+    let state = createInitialState(undefined, twoDice);
+    state = applyAction(state, { type: 'REQUEST_ROLL' }, pinnedRng([2, 6])).state;
+    expect(state.dice.queue).toEqual([6, 2]);
+    const res = applyAction(state, { type: 'RESOLVE_ROLL', value: 2 }); // stale
+    expect(res.state.phase).toBe('SELECTING_TOKEN');
+    expect(res.state.validMoves.some((m) => m.isEnteringBoard)).toBe(true);
   });
 });
