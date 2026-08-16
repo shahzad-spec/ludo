@@ -17,7 +17,7 @@
  */
 
 import { BASE, FINISH } from './board/track';
-import type { Action, GameState, Move } from './types';
+import type { Action, GameState, Move, TurnRecord } from './types';
 import type { GameEvent } from '../bus/events';
 import { rollSet } from './rules/dice';
 import { getLegalMoves } from './rules/legalMoves';
@@ -186,7 +186,7 @@ function handleResolveMove(state: GameState): ApplyResult {
   const mover = tokens[moverId];
   tokens[moverId] = applyMove(mover, move);
 
-  // 2. Captures (resets victims to BASE, emits TOKEN_CAPTURED).
+  // 2. Captures (resets victims to BASE, emits TOKEN_CAPTURED) — per die.
   let captured = false;
   const captureIds: string[] = [];
   for (const result of checkCaptures(state, moverId, move.finalProgress)) {
@@ -196,8 +196,25 @@ function handleResolveMove(state: GameState): ApplyResult {
     captureIds.push(result.victim.id);
   }
 
-  // 3. Win check (must use the post-move token set).
-  const movedState = patch(state, { tokens });
+  // 5D-1d: consume the played head die; accumulate the set-capture flag (A2.1).
+  const diePlayed = state.dice.queue[0] ?? state.dice.value ?? 0;
+  const remaining = state.dice.queue.slice(1);
+  const diceAfterDie: GameState['dice'] = {
+    ...state.dice,
+    queue: remaining,
+    value: remaining[0] ?? null,
+    capturedInSet: state.dice.capturedInSet || captured,
+  };
+  const record: TurnRecord = {
+    player: mover.color,
+    roll: diePlayed,
+    rolls: state.dice.rolledSet,
+    tokenId: moverId,
+    capturedIds: captureIds.length ? captureIds : undefined,
+  };
+  const movedState = patch(state, { tokens, dice: diceAfterDie });
+
+  // 3. Win check — immediate, mid-set (Decision 7): remaining dice discarded.
   const winner = checkWin(movedState, mover.color);
   if (winner) {
     const winners = state.winners.includes(winner)
@@ -209,23 +226,46 @@ function handleResolveMove(state: GameState): ApplyResult {
       winners,
       validMoves: [],
       dice: clearedDice(),
-      turnHistory: [
-        ...state.turnHistory,
-        {
-          player: mover.color,
-          roll: state.dice.value ?? 0,
-          tokenId: moverId,
-          capturedIds: captureIds.length ? captureIds : undefined,
-        },
-      ],
+      turnHistory: [...state.turnHistory, record],
     });
     return { state: next, events };
   }
 
-  // 4. Turn resolution.
-  const rolledSix = state.dice.value === 6;
-  const newConsecutiveSixes = rolledSix ? state.consecutiveSixes + 1 : 0;
-  const turn = resolveTurn(state, rolledSix, captured, newConsecutiveSixes);
+  // 4a. Set continues: burn dead dice; a playable die re-enters SELECTING_TOKEN.
+  if (remaining.length > 0) {
+    const afterBurns = advanceQueueToPlayableDie(movedState, events);
+    if (afterBurns.phase === 'SELECTING_TOKEN') {
+      return {
+        state: patch(afterBurns, { turnHistory: [...state.turnHistory, record] }),
+        events,
+      };
+    }
+    // Burns emptied the queue → end of set on the burned state.
+    return endOfSet(afterBurns, state, record, events);
+  }
+
+  // 4b. Queue empty → end-of-set resolution (Decisions 5/6).
+  return endOfSet(movedState, state, record, events);
+}
+
+/**
+ * End-of-set turn resolution (PHASE-5D 5D-1d). Six-counting is per SET
+ * (rolledSet.includes(6) — a double-6 increments once, Decision 5); capture is
+ * per SET (capturedInSet, Decision 6). State transitions are v1-identical at
+ * diceCount 1. The announce-on-keep emission (extraTurn: true) is the one
+ * intentional event-stream addition (design §3.4) — v1 emitted nothing when a
+ * player kept their turn.
+ */
+function endOfSet(
+  movedState: GameState,
+  preMoveState: GameState,
+  record: TurnRecord,
+  events: GameEvent[],
+): ApplyResult {
+  const rolledSix = preMoveState.dice.rolledSet.includes(6);
+  const setCaptured = movedState.dice.capturedInSet;
+  const newConsecutiveSixes = rolledSix ? preMoveState.consecutiveSixes + 1 : 0;
+  const turn = resolveTurn(preMoveState, rolledSix, setCaptured, newConsecutiveSixes);
 
   const next = patch(movedState, {
     phase: 'IDLE',
@@ -233,18 +273,12 @@ function handleResolveMove(state: GameState): ApplyResult {
     dice: clearedDice(),
     currentPlayer: turn.nextPlayer,
     consecutiveSixes: turn.resetSixes ? 0 : newConsecutiveSixes,
-    turnHistory: [
-      ...state.turnHistory,
-      {
-        player: mover.color,
-        roll: state.dice.value ?? 0,
-        tokenId: move.tokenIds[0],
-        capturedIds: captureIds.length ? captureIds : undefined,
-      },
-    ],
+    turnHistory: [...preMoveState.turnHistory, record],
   });
   if (turn.advanced) {
     events.push({ type: 'TURN_CHANGED', nextPlayer: turn.nextPlayer });
+  } else {
+    events.push({ type: 'TURN_CHANGED', nextPlayer: turn.nextPlayer, extraTurn: true });
   }
   return { state: next, events };
 }
