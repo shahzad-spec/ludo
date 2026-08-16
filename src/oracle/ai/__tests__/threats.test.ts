@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { exposurePenalty, totalExposure, anticipationDanger } from '../threats';
 import { stateWithPlacements } from '../../__tests__/helpers';
+import { V1_RULES } from '../../config/rulesPreset';
 
 describe('exposurePenalty', () => {
   it('no penalty on safe cell', () => {
@@ -121,5 +122,46 @@ describe('anticipationDanger — 7-12 band behind EXPOSED tokens (5C-6)', () => 
       'blue-0': { color: 'blue', progress: 12 }, // cell 51, 9 behind cell 8
     });
     expect(anticipationDanger(state, 'red')).toBe(0);
+  });
+});
+
+describe('5D-3b — threatProb-weighted exposure (dice-aware)', () => {
+  const twoDice = { ...V1_RULES, diceCount: 2 as const };
+
+  it('k=2, opponent 6 behind: penalty = threatProb(2,6) × value = 16/36 × V', () => {
+    // red lands cell 10 (V=10); green at cell 4 → gp 43 ((13+43)%52=4), 6 behind.
+    const state = stateWithPlacements(
+      { 'red-0': { color: 'red', progress: 10 }, 'green-0': { color: 'green', progress: 43 } },
+      { rules: twoDice },
+    );
+    expect(exposurePenalty(state, { kind: 'track', cell: 10 }, 'red', 1, 10)).toBeCloseTo(
+      (16 / 36) * 10,
+      12,
+    );
+  });
+
+  it('k=2, opponent 9 behind (dead at k=1): penalty = 4/36 × V; 13 behind = 0', () => {
+    // cell 10; 9 behind → cell 1 → gp 40; 13 behind → cell 49 → gp 36.
+    const mk = (gp: number) =>
+      stateWithPlacements(
+        { 'red-0': { color: 'red', progress: 10 }, 'green-0': { color: 'green', progress: gp } },
+        { rules: twoDice },
+      );
+    expect(exposurePenalty(mk(40), { kind: 'track', cell: 10 }, 'red', 1, 10)).toBeCloseTo(
+      (4 / 36) * 10,
+      12,
+    );
+    expect(exposurePenalty(mk(36), { kind: 'track', cell: 10 }, 'red', 1, 10)).toBe(0);
+  });
+
+  it('anticipationDanger at k=2: 13 behind exposed is positive; 25 behind is 0', () => {
+    const mk = (gp: number) =>
+      stateWithPlacements(
+        { 'red-0': { color: 'red', progress: 10 }, 'green-0': { color: 'green', progress: gp } },
+        { rules: twoDice },
+      );
+    // band at k=2 is 13..24. cell 10 → 13 behind = cell 49 → gp 36; 25 behind = cell 37 → gp 24.
+    expect(anticipationDanger(mk(36), 'red')).toBeGreaterThan(0);
+    expect(anticipationDanger(mk(24), 'red')).toBe(0);
   });
 });

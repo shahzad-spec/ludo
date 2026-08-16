@@ -14,11 +14,14 @@ import type { GameState } from '../types';
 import { BASE, FINISH, FIRST_HOME_PROGRESS, ENTRY_OFFSET, SHARED_LOOP_LENGTH } from '../board/track';
 import type { Color } from '../board/track';
 import { SAFE_TRACK_CELLS } from '../board/safeCells';
+import { meanStep, yardExitTurns, threatProb, THREAT_REACH } from './diceMath';
 
-/** Expected value of a single dice roll. */
+/** Expected value of a single dice roll. LEGACY k=1 constant — kept exported for
+ *  prior pinned tests; dice-aware code uses diceMath.meanStep(k). */
 export const MEAN_STEP = 3.5;
 
-/** Expected rolls to exit the yard (geometric distribution, p = 1/6 → mean 6). */
+/** Expected rolls to exit the yard at ONE die (geometric, p = 1/6 → mean 6).
+ *  LEGACY k=1 — dice-aware code uses diceMath.yardExitTurns(k). */
 export const YARD_EXIT_TURNS = 6;
 
 /**
@@ -50,10 +53,10 @@ export function tokenValue(progress: number): number {
  * absorbs the modelling error. Monotonicity is the only hard invariant and is
  * pinned by `features.test.ts`.
  */
-export function tokenETF(progress: number): number {
-  if (progress === BASE) return YARD_EXIT_TURNS + FINISH / MEAN_STEP; // ≈ 22
+export function tokenETF(progress: number, diceCount: number = 1): number {
+  if (progress === BASE) return yardExitTurns(diceCount) + FINISH / meanStep(diceCount); // k=1: ≈ 22
   if (progress >= FINISH) return 0;
-  return (FINISH - progress) / MEAN_STEP;
+  return (FINISH - progress) / meanStep(diceCount);
 }
 
 /**
@@ -62,9 +65,10 @@ export function tokenETF(progress: number): number {
  * work adds up. Lower colorETF = closer to finishing the house = ahead.
  */
 export function colorETF(state: GameState, color: Color): number {
+  const k = state.rules.diceCount;
   let total = 0;
   for (const token of Object.values(state.tokens)) {
-    if (token.color === color) total += tokenETF(token.progress);
+    if (token.color === color) total += tokenETF(token.progress, k);
   }
   return total;
 }
@@ -153,16 +157,32 @@ export function captureShots(state: GameState, me: Color): CaptureShot[] {
 }
 
 /**
- * Expected-value-weighted capture pressure. Sum of (1/6 × victimValue) over all
- * live shots, with shots against the race leader's tokens scaled by LEADER_TAX.
+ * Expected-value-weighted capture pressure (5D-3b: dice-aware). For each
+ * opponent token ahead of one of mine within stacked reach (1..6k), weight its
+ * victimValue by threatProb(k, dist) — the PREFIX-LANDING probability that my
+ * k dice land exactly there — with the leader's tokens taxed. At k=1 this is
+ * exactly the classic (1/6 × V × tax) over 1..6. `captureShots` (the exported
+ * single-die list) stays 1..6 by contract; the stacked 7..6k zone lives here.
  */
 export function shotPressure(state: GameState, me: Color): number {
   const leader = raceLeader(state, me);
+  const k = state.rules.diceCount;
   let pressure = 0;
-  for (const shot of captureShots(state, me)) {
-    const victim = state.tokens[shot.victimId];
-    const tax = leader !== null && victim.color === leader ? effectiveLeaderTax(state, me) : 1;
-    pressure += (1 / 6) * shot.victimValue * tax;
+  for (const myToken of Object.values(state.tokens)) {
+    if (myToken.color !== me) continue;
+    if (myToken.progress < 0 || myToken.progress > 50) continue;
+    const myCell = (ENTRY_OFFSET[me] + myToken.progress) % SHARED_LOOP_LENGTH;
+    for (const opp of Object.values(state.tokens)) {
+      if (opp.color === me) continue;
+      if (opp.progress < 0 || opp.progress > 50) continue;
+      const oppCell = (ENTRY_OFFSET[opp.color] + opp.progress) % SHARED_LOOP_LENGTH;
+      if (SAFE_TRACK_CELLS.has(oppCell)) continue; // can't capture on a safe cell
+      const dist = loopDelta(myCell, oppCell); // AHEAD of me
+      if (dist < 1 || dist > THREAT_REACH(k)) continue;
+      if (myToken.progress + dist > 50) continue; // no home-column diversion
+      const tax = leader !== null && opp.color === leader ? effectiveLeaderTax(state, me) : 1;
+      pressure += threatProb(k, dist) * tokenValue(opp.progress) * tax;
+    }
   }
   return pressure;
 }
@@ -222,9 +242,18 @@ export function finishGap(state: GameState, me: Color): number {
  * Multi-dice (future phase) widens capture reach — ONLY these constants and the
  * band factor change then; that is the cheap-migration promise.
  */
-export const ANTICIPATION_BAND_MIN = 7;
-export const ANTICIPATION_BAND_MAX = 12;
-/** Weight of the 7-12 sub-band relative to the 1-6 sub-band. */
+export const ANTICIPATION_BAND_MIN = 7; // legacy k=1 (kept for compat)
+export const ANTICIPATION_BAND_MAX = 12; // legacy k=1 (kept for compat)
+
+/**
+ * Dice-aware anticipation band (PHASE-5D 5D-3b): the zone beyond the immediate
+ * stacked reach (1..6k) where opponents are ~two turns away. [6k+1, 12k].
+ */
+export function ANTICIPATION_BAND(diceCount: number): [number, number] {
+  return [6 * diceCount + 1, 12 * diceCount];
+}
+
+/** Weight of the (6k+1..12k) sub-band relative to the immediate 1..6k band. */
 export const AMBUSH_FAR_DISCOUNT = 0.5;
 
 /** Forward distance around the shared loop from `fromCell` to `toCell` (0-51). */
@@ -240,6 +269,8 @@ export function loopDelta(fromCell: number, toCell: number): number {
  */
 export function ambushPressure(state: GameState, me: Color): number {
   const leader = raceLeader(state, me);
+  const k = state.rules.diceCount;
+  const bandMax = ANTICIPATION_BAND(k)[1];
   let pressure = 0;
   for (const t of Object.values(state.tokens)) {
     if (t.color !== me) continue;
@@ -251,10 +282,13 @@ export function ambushPressure(state: GameState, me: Color): number {
       if (opp.progress < 0 || opp.progress > 50) continue;
       const oppCell = (ENTRY_OFFSET[opp.color] + opp.progress) % SHARED_LOOP_LENGTH;
       const behind = loopDelta(oppCell, cell); // how far the opponent trails me
-      if (behind < 1 || behind > ANTICIPATION_BAND_MAX) continue;
-      const factor = behind <= 6 ? 1 : AMBUSH_FAR_DISCOUNT;
+      if (behind < 1 || behind > bandMax) continue;
+      // Near zone (≤6k): exact one-turn landing probability. Far zone (6k+1..12k):
+      // threatProb is 0 there by definition — keep the flat 1/6×discount heuristic
+      // (5C-6 semantics; the window, not the weight, is what widens with k).
+      const weight = behind <= THREAT_REACH(k) ? threatProb(k, behind) : (1 / 6) * AMBUSH_FAR_DISCOUNT;
       const tax = leader !== null && opp.color === leader ? effectiveLeaderTax(state, me) : 1;
-      pressure += (1 / 6) * tokenValue(opp.progress) * factor * tax;
+      pressure += weight * tokenValue(opp.progress) * tax;
     }
   }
   return pressure;
@@ -281,7 +315,8 @@ export function safeHaven(state: GameState, me: Color): number {
       if (o.progress < 0 || o.progress > 50) return false;
       const oCell = (ENTRY_OFFSET[o.color] + o.progress) % SHARED_LOOP_LENGTH;
       const behind = loopDelta(oCell, cell);
-      return behind >= 1 && behind <= 6; // 5C-7: one-roll reach only
+      // 5C-7 rule, 5D-generalized: one-TURN reach with the dice in hand (6k).
+      return behind >= 1 && behind <= THREAT_REACH(state.rules.diceCount);
     });
     if (lurked) havens++;
   }

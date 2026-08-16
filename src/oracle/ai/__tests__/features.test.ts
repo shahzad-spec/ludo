@@ -29,9 +29,11 @@ import {
   safeHaven,
   leaderUrgency,
   effectiveLeaderTax,
+  ANTICIPATION_BAND,
 } from '../features';
 import { stateWithPlacements } from '../../__tests__/helpers';
 import { BASE, FINISH } from '../../board/track';
+import { V1_RULES } from '../../config/rulesPreset';
 
 describe('tokenETF — the per-token race model', () => {
   it('finished (FINISH) = 0', () => {
@@ -341,5 +343,71 @@ describe('safeHaven — one-roll window (5C-7: B-4 rule)', () => {
       'blue-0': { color: 'blue', progress: 12 }, // cell 51, 9 behind
     });
     expect(safeHaven(state, 'red')).toBe(0);
+  });
+});
+
+describe('5D-3b — dice-aware ETF (multi-dice)', () => {
+  it('default param preserves k=1: tokenETF(0) === tokenETF(0, 1) === 16', () => {
+    expect(tokenETF(0)).toBe(tokenETF(0, 1));
+    expect(tokenETF(0)).toBe(FINISH / MEAN_STEP);
+  });
+
+  it('k=2: track start = 8 (56/7); yard = 36/11 + 8 ≈ 11.27', () => {
+    expect(tokenETF(0, 2)).toBeCloseTo(8, 12);
+    expect(tokenETF(BASE, 2)).toBeCloseTo(36 / 11 + 8, 12);
+  });
+
+  it('k=2 monotone: strictly decreasing along the whole path', () => {
+    for (let p = 0; p < FINISH; p++) {
+      expect(tokenETF(p, 2)).toBeGreaterThan(tokenETF(p + 1, 2));
+    }
+  });
+
+  it('colorETF at diceCount 2 is lower than at 1 on the same board (faster game)', () => {
+    const placements = { 'red-0': { color: 'red' as const, progress: 20 } };
+    const s1 = stateWithPlacements(placements);
+    const s2 = stateWithPlacements(placements, { rules: { ...V1_RULES, diceCount: 2 as const } });
+    expect(colorETF(s2, 'red')).toBeLessThan(colorETF(s1, 'red'));
+  });
+
+  it('ANTICIPATION_BAND: [7,12] at k=1; [13,24] at k=2', () => {
+    expect(ANTICIPATION_BAND(1)).toEqual([7, 12]);
+    expect(ANTICIPATION_BAND(2)).toEqual([13, 24]);
+  });
+});
+
+describe('5D-3b — dice-aware offensive bands', () => {
+  const twoDice = { ...V1_RULES, diceCount: 2 as const };
+
+  it('shotPressure fires in the stacked zone: opponent 9 AHEAD at k=2', () => {
+    // red-0 p10 (cell 10); green-0 p6 → cell 19, 9 ahead — reachable only by
+    // stacking (6+3). Dead at k=1, live at k=2.
+    const s1 = stateWithPlacements({
+      'red-0': { color: 'red', progress: 10 },
+      'green-0': { color: 'green', progress: 6 },
+    });
+    const s2 = stateWithPlacements(
+      {
+        'red-0': { color: 'red', progress: 10 },
+        'green-0': { color: 'green', progress: 6 },
+      },
+      { rules: twoDice },
+    );
+    expect(shotPressure(s1, 'red')).toBe(0); // 9 > 6: unreachable at k=1
+    expect(shotPressure(s2, 'red')).toBeGreaterThan(0);
+  });
+
+  it('safeHaven at k=2: lurker 7 behind is HOT; 13 behind is cold', () => {
+    const mk = (gp: number) =>
+      stateWithPlacements(
+        {
+          'red-0': { color: 'red', progress: 8 }, // safe star, cell 8
+          'green-0': { color: 'green', progress: gp },
+        },
+        { rules: twoDice },
+      );
+    // green cell = (13+gp)%52. 7 behind cell 8 → cell 1 → gp 40. 13 behind → cell 47 → gp 34.
+    expect(safeHaven(mk(40), 'red')).toBe(1);
+    expect(safeHaven(mk(34), 'red')).toBe(0);
   });
 });

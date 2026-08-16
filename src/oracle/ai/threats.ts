@@ -11,16 +11,18 @@ import { ENTRY_OFFSET, SHARED_LOOP_LENGTH } from '../board/track';
 import { SAFE_TRACK_CELLS } from '../board/safeCells';
 import {
   tokenValue,
-  ANTICIPATION_BAND_MIN,
-  ANTICIPATION_BAND_MAX,
+  ANTICIPATION_BAND,
   AMBUSH_FAR_DISCOUNT,
   loopDelta,
 } from './features';
+import { threatProb, THREAT_REACH } from './diceMath';
 
 /**
  * Expected loss from parking at `dest` where opponents can capture.
- * Sums (1/6 × tokenValue) for each opponent within dice range (1-6 behind).
- * Multiplied by riskScale (amendment E: ahead → larger penalty).
+ * 5D-3b: dice-aware — each opponent k dice in hand threatens distances 1..6k,
+ * weighted by threatProb(k, behind) (the PREFIX-LANDING probability; at k=1 the
+ * classic flat 1/6 over 1..6, byte-identical to v1). Multiplied by riskScale
+ * (amendment E: ahead → larger penalty).
  *
  * @param finalProgress The moving token's progress after the move (for value calc)
  */
@@ -36,6 +38,7 @@ export function exposurePenalty(
 
   // Correction 2: use the move's finalProgress for the token's value
   const myValue = tokenValue(finalProgress ?? 50);
+  const k = state.rules.diceCount;
 
   let penalty = 0;
   for (const t of Object.values(state.tokens)) {
@@ -43,8 +46,8 @@ export function exposurePenalty(
     if (t.progress < 0 || t.progress > 50) continue;
     const oppCell = (ENTRY_OFFSET[t.color] + t.progress) % 52;
     const behind = (dest.cell - oppCell + 52) % 52;
-    if (behind >= 1 && behind <= 6) {
-      penalty += (1 / 6) * myValue;
+    if (behind >= 1 && behind <= THREAT_REACH(k)) {
+      penalty += threatProb(k, behind) * myValue;
     }
   }
   return penalty * scale;
@@ -68,12 +71,16 @@ export function totalExposure(state: GameState, me: Color): number {
 }
 
 /**
- * Anticipation-band danger (5C-6): opponents 7-12 behind my EXPOSED shared-loop
- * tokens can reach me in ~two rolls — discounted future capture risk, distinct
- * from exposurePenalty's 1-6 band (unchanged). Positive magnitude like
- * totalExposure.
+ * Anticipation-band danger (5C-6, 5D-3b dice-aware): opponents in the
+ * (6k+1)..12k zone behind my EXPOSED shared-loop tokens are ~two turns away —
+ * discounted future capture risk, distinct from exposurePenalty's immediate
+ * 1..6k band. The far zone keeps 5C-6's flat 1/6×discount heuristic (threatProb
+ * is zero beyond 6k by definition — one-turn landing probabilities cannot price
+ * two-turn danger); only the WINDOW widens with k.
  */
 export function anticipationDanger(state: GameState, me: Color): number {
+  const k = state.rules.diceCount;
+  const [bandMin, bandMax] = ANTICIPATION_BAND(k);
   let total = 0;
   for (const t of Object.values(state.tokens)) {
     if (t.color !== me) continue;
@@ -86,7 +93,7 @@ export function anticipationDanger(state: GameState, me: Color): number {
       if (opp.progress < 0 || opp.progress > 50) continue;
       const oppCell = (ENTRY_OFFSET[opp.color] + opp.progress) % SHARED_LOOP_LENGTH;
       const behind = loopDelta(oppCell, cell);
-      if (behind >= ANTICIPATION_BAND_MIN && behind <= ANTICIPATION_BAND_MAX) {
+      if (behind >= bandMin && behind <= bandMax) {
         total += AMBUSH_FAR_DISCOUNT * (1 / 6) * myValue;
       }
     }
