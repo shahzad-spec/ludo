@@ -12,6 +12,17 @@ export function rollDice(rng: () => number = Math.random): number {
 }
 
 /**
+ * Roll a set of `count` dice in draw order (PHASE-5D 5D-1b). No sorting here —
+ * the engine owns the descending queue order (A1 Decision 14). A pinned RNG
+ * scripts the whole set deterministically: pinnedRng([3,6]) → [3,6].
+ */
+export function rollSet(rng: () => number = Math.random, count: number): number[] {
+  const set: number[] = [];
+  for (let i = 0; i < count; i++) set.push(rollDice(rng));
+  return set;
+}
+
+/**
  * Create a pinned RNG that always returns the given sequence, then repeats the
  * last value. Used in tests to script exact dice outcomes.
  *

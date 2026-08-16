@@ -16,7 +16,14 @@ import type { Color, Position } from '../oracle/board/track';
 
 /** Every event the Oracle can emit. Strictly typed. */
 export type GameEvent =
-  | { type: 'DICE_ROLLED'; player: Color; value: number }
+  | {
+      type: 'DICE_ROLLED';
+      player: Color;
+      /** The full set as rolled, draw order (PHASE-5D, additive). */
+      values: number[];
+      /** v1 compat: the die now in play (=== descending queue head). */
+      value: number;
+    }
   | { type: 'NO_LEGAL_MOVE'; player: Color; value: number }
   | {
       type: 'TOKEN_MOVED';

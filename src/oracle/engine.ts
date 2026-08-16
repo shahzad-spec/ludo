@@ -19,7 +19,7 @@
 import { BASE, FINISH } from './board/track';
 import type { Action, GameState, Move } from './types';
 import type { GameEvent } from '../bus/events';
-import { rollDice } from './rules/dice';
+import { rollSet } from './rules/dice';
 import { getLegalMoves } from './rules/legalMoves';
 import { applyMove } from './rules/movement';
 import { checkCaptures } from './rules/capture';
@@ -52,16 +52,17 @@ function handleRequestRoll(state: GameState, rng: () => number): ApplyResult {
   if (state.phase !== 'IDLE') return reject(state);
   if (isGameOver(state)) return reject(state);
 
-  const value = rollDice(rng);
-  // 5D-1a interim: single-die queue (rollSet arrives in 5D-1b). The alias and
-  // rolledSet are populated so the queue invariants hold from the first commit.
+  const set = rollSet(rng, state.rules.diceCount);
+  // A1 Decision 14: the queue is DESCENDING — largest die first. The rolledSet
+  // keeps draw order for UI/history; value is the compat alias onto queue[0].
+  const queue = [...set].sort((a, b) => b - a);
   const next = patch(state, {
-    dice: { queue: [value], rolledSet: [value], value, rolled: true, capturedInSet: false },
+    dice: { queue, rolledSet: set, value: queue[0], rolled: true, capturedInSet: false },
     phase: 'ROLLING',
   });
   return {
     state: next,
-    events: [{ type: 'DICE_ROLLED', player: state.currentPlayer, value }],
+    events: [{ type: 'DICE_ROLLED', player: state.currentPlayer, values: set, value: queue[0] }],
   };
 }
 

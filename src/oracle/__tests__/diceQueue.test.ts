@@ -75,3 +75,68 @@ describe('dice queue — v1 single-die flow keeps the alias (5D-1a interim)', ()
     expectDiceInvariants(state);
   });
 });
+
+describe('rollSet — as-rolled order, injectable RNG (5D-1b)', () => {
+  it('count 2, pinned [3,6] → [3,6] (no sort here — sorting is the engine\'s job)', async () => {
+    const { rollSet } = await import('../rules/dice');
+    expect(rollSet(pinnedRng([3, 6]), 2)).toEqual([3, 6]);
+  });
+
+  it('count 1 → single-element set (equivalence anchor)', async () => {
+    const { rollSet } = await import('../rules/dice');
+    expect(rollSet(pinnedRng([4]), 1)).toEqual([4]);
+  });
+
+  it('count 4, pinned [1,2,3,4] → four values in draw order', async () => {
+    const { rollSet } = await import('../rules/dice');
+    expect(rollSet(pinnedRng([1, 2, 3, 4]), 4)).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe('multi-die REQUEST_ROLL (5D-1b)', () => {
+  const twoDice = { ...V1_RULES, diceCount: 2 as const };
+
+  it('diceCount 2, pinned [3,6] → queue DESCENDING [6,3]; rolledSet keeps roll order; alias = 6', () => {
+    let state = createInitialState(undefined, twoDice);
+    const res = applyAction(state, { type: 'REQUEST_ROLL' }, pinnedRng([3, 6]));
+    state = res.state;
+    expect(state.phase).toBe('ROLLING');
+    expect(state.dice.queue).toEqual([6, 3]); // A1 Decision 14: largest first
+    expect(state.dice.rolledSet).toEqual([3, 6]);
+    expect(state.dice.value).toBe(6);
+    expect(state.dice.capturedInSet).toBe(false);
+    expectDiceInvariants(state);
+  });
+
+  it('DICE_ROLLED carries values[] (additive) AND value (compat)', () => {
+    const state = createInitialState(undefined, twoDice);
+    const res = applyAction(state, { type: 'REQUEST_ROLL' }, pinnedRng([3, 6]));
+    expect(res.events).toEqual([
+      { type: 'DICE_ROLLED', player: 'red', values: [3, 6], value: 6 },
+    ]);
+  });
+
+  it('diceCount 4 sorts the queue [4,3,2,1]; alias = 4', () => {
+    const four = { ...V1_RULES, diceCount: 4 as const };
+    const state = createInitialState(undefined, four);
+    const res = applyAction(state, { type: 'REQUEST_ROLL' }, pinnedRng([1, 2, 3, 4]));
+    expect(res.state.dice.queue).toEqual([4, 3, 2, 1]);
+    expect(res.state.dice.value).toBe(4);
+    expectDiceInvariants(res.state);
+  });
+
+  it('double-6 set: queue [6,6], value 6 — the Decision-5 anchor (one extra turn, not two)', () => {
+    const state = createInitialState(undefined, twoDice);
+    const res = applyAction(state, { type: 'REQUEST_ROLL' }, pinnedRng([6, 6]));
+    expect(res.state.dice.queue).toEqual([6, 6]);
+    expect(res.state.dice.rolledSet).toEqual([6, 6]);
+  });
+
+  it('out-of-phase reject: REQUEST_ROLL during ROLLING leaves the queue untouched', () => {
+    let state = createInitialState(undefined, twoDice);
+    state = applyAction(state, { type: 'REQUEST_ROLL' }, pinnedRng([3, 6])).state;
+    const rejected = applyAction(state, { type: 'REQUEST_ROLL' }, pinnedRng([1, 1]));
+    expect(rejected.state).toBe(state); // same reference — unchanged
+    expect(rejected.events).toEqual([]);
+  });
+});
