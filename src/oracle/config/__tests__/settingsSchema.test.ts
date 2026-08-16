@@ -73,3 +73,16 @@ describe('fieldsForScope — filters by since', () => {
     expect(CURRENT_SCOPE).toBe('v1');
   });
 });
+
+describe("scope 'v1.1' (PHASE-5D) — v1 fields + diceCount only", () => {
+  it("includes diceCount and excludes every v1.5/v2 field", () => {
+    const keys = fieldsForScope('v1.1').map((f) => f.key);
+    expect(keys).toContain('diceCount');
+    expect(keys).not.toContain('forcedCapture');
+    expect(keys).not.toContain('optionalPass');
+    expect(keys).not.toContain('safeCellSet');
+    expect(keys).not.toContain('blowBack');
+    expect(keys).not.toContain('teams');
+    expect(keys).not.toContain('challengeMode');
+  });
+});

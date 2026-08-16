@@ -1,4 +1,4 @@
-# 5C Baseline — Placement Ladder
+# 5D Bench — dice 2 (multi-dice regression, PHASE-5D 5D-3c/5D-6)
 
 > Generated 2026-08-16, seed 42, dice 2, games: non-Pro 100, Pro 10.
 > Weights: committed `EVAL_WEIGHTS` + `SCALE_PARAMS` (see src/oracle/ai/evaluate.ts). Hard = v1 `scoreMove` (F-1).
@@ -26,12 +26,8 @@
 | pro:medium | 1311 |
 | pro:hard | 1226 |
 
-## Target gates (5C-4)
+## Gates (5D — regression-only, F-3: no ladder-adoption claims)
 
-- Placement ordering: Pro > Hard > Medium > Easy
-- Hard placement-beats Medium ≥ 55% (F-1: Hard stays on scoreMove — its only lever
-  is the shared ETF-anchored scale constants, not EVAL_WEIGHTS; demote to ≥52% +
-  backlog if unreachable, never silent)
-- Pro placement-beats Medium ≥ 65% at ≥ 30 games (sample-size rule: n=10 is noise)
-- All `it.skip` P-tests (P-2/P-3/P-4/P-5/P-8) unskipped and green (F-2)
-- No tier stalls: mean turns-to-finish stays in normal range (no F-1 recurrence)
+- Stall-guard: 100% termination on every pairing (no F-1 recurrence)
+- Speed: mean turns at dice 2 < the dice-1 baseline (~1800 on this harness)
+- Placement rates are recorded, NOT interpreted (n too small for claims)

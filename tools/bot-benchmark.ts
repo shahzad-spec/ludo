@@ -96,8 +96,11 @@ function main() {
   }
 
   const date = new Date().toISOString().slice(0, 10);
+  const isMultiDice = dice > 1;
   const md = [
-    `# 5C Baseline — Placement Ladder`,
+    isMultiDice
+      ? `# 5D Bench — dice ${dice} (multi-dice regression, PHASE-5D 5D-3c/5D-6)`
+      : `# 5C Baseline — Placement Ladder`,
     ``,
     `> Generated ${date}, seed ${seed}, dice ${dice}, games: non-Pro ${games}, Pro ${gamesPro}.`,
     `> Weights: committed \`EVAL_WEIGHTS\` + \`SCALE_PARAMS\` (see src/oracle/ai/evaluate.ts). Hard = v1 \`scoreMove\` (F-1).`,
@@ -119,15 +122,25 @@ function main() {
     `|---|---:|`,
     ...results.map((r) => `| ${r.label} | ${r.meanTurns} |`),
     ``,
-    `## Target gates (5C-4)`,
-    ``,
-    `- Placement ordering: Pro > Hard > Medium > Easy`,
-    `- Hard placement-beats Medium ≥ 55% (F-1: Hard stays on scoreMove — its only lever`,
-    `  is the shared ETF-anchored scale constants, not EVAL_WEIGHTS; demote to ≥52% +`,
-    `  backlog if unreachable, never silent)`,
-    `- Pro placement-beats Medium ≥ 65% at ≥ 30 games (sample-size rule: n=10 is noise)`,
-    `- All \`it.skip\` P-tests (P-2/P-3/P-4/P-5/P-8) unskipped and green (F-2)`,
-    `- No tier stalls: mean turns-to-finish stays in normal range (no F-1 recurrence)`,
+    ...(isMultiDice
+      ? [
+          `## Gates (5D — regression-only, F-3: no ladder-adoption claims)`,
+          ``,
+          `- Stall-guard: 100% termination on every pairing (no F-1 recurrence)`,
+          `- Speed: mean turns at dice ${dice} < the dice-1 baseline (~1800 on this harness)`,
+          `- Placement rates are recorded, NOT interpreted (n too small for claims)`,
+        ]
+      : [
+          `## Target gates (5C-4)`,
+          ``,
+          `- Placement ordering: Pro > Hard > Medium > Easy`,
+          `- Hard placement-beats Medium ≥ 55% (F-1: Hard stays on scoreMove — its only lever`,
+          `  is the shared ETF-anchored scale constants, not EVAL_WEIGHTS; demote to ≥52% +`,
+          `  backlog if unreachable, never silent)`,
+          `- Pro placement-beats Medium ≥ 65% at ≥ 30 games (sample-size rule: n=10 is noise)`,
+          `- All \`it.skip\` P-tests (P-2/P-3/P-4/P-5/P-8) unskipped and green (F-2)`,
+          `- No tier stalls: mean turns-to-finish stays in normal range (no F-1 recurrence)`,
+        ]),
   ].join('\n');
 
   mkdirSync(dirname(out), { recursive: true });

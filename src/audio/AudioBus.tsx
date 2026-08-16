@@ -89,6 +89,15 @@ export function AudioBus() {
       }),
     );
 
+    // DIE_BURNED (PHASE-5D) → subtle blip: a die was unplayable and discarded
+    // (design §4: reuse the ui.mp3 variant — distinct from NO_LEGAL_MOVE's full
+    // set burn, which fires its own event right after).
+    handlers.push(
+      bus.on('DIE_BURNED', () => {
+        playSfx('ui', getVol() * 0.35, getMuted());
+      }),
+    );
+
     return () => handlers.forEach((unsub) => unsub());
   }, [volume, muted]); // re-subscribe if volume/mute change (closures stay fresh)
 

@@ -35,6 +35,9 @@ function ControlBar() {
   const phase = useGame((s) => s.state.phase);
   const currentPlayer = useGame((s) => s.state.currentPlayer);
   const diceValue = useGame((s) => s.state.dice.value);
+  const rolledSet = useGame((s) => s.state.dice.rolledSet);
+  const queueLength = useGame((s) => s.state.dice.queue.length);
+  const diceCount = useGame((s) => s.state.rules.diceCount);
   const dispatch = useGame((s) => s.dispatch);
   const reset = useGame((s) => s.reset);
   const rules = useGame((s) => s.state.rules);
@@ -53,8 +56,19 @@ function ControlBar() {
 
   function startSolo() {
     setBotDifficulty(difficulty);
-    reset(soloRules());
+    reset({ ...soloRules(), diceCount });
   }
+
+  // PHASE-5D 5D-5: dice-per-turn selector. Rules are immutable per game
+  // (R&S §1.1) — switching restarts the game with everything else preserved.
+  function cycleDice() {
+    const next = ((diceCount % 4) + 1) as 1 | 2 | 3 | 4; // 1→2→3→4→1
+    reset({ ...rules, diceCount: next });
+  }
+
+  // Remaining-dice pips: the set in descending play order; consumed dice dim.
+  const pips = [...rolledSet].sort((a, b) => b - a);
+  const playedCount = rolledSet.length > 0 ? rolledSet.length - queueLength : 0;
 
   const isBotTurn = rules.bots.includes(currentPlayer);
   const canRoll = phase === 'IDLE' && !isBotTurn;
@@ -79,7 +93,18 @@ function ControlBar() {
     >
       <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{currentPlayer}</span>
       <span style={{ opacity: 0.6 }}>{phase}</span>
-      {diceValue !== null && <span style={{ fontWeight: 700 }}>🎲 {diceValue}</span>}
+      {rolledSet.length > 0 ? (
+        <span title="Remaining dice this set (dimmed = played/burned)" style={{ fontWeight: 700 }}>
+          🎲{' '}
+          {pips.map((v, i) => (
+            <span key={i} style={{ opacity: i < playedCount ? 0.3 : 1 }}>
+              {i > 0 ? ' ' : ''}{v}
+            </span>
+          ))}
+        </span>
+      ) : (
+        diceValue !== null && <span style={{ fontWeight: 700 }}>🎲 {diceValue}</span>
+      )}
       <button
         disabled={!canRoll}
         onClick={() => dispatch({ type: 'REQUEST_ROLL' })}
@@ -109,6 +134,14 @@ function ControlBar() {
         title={`Start solo vs 3 ${difficulty} bots`}
       >
         🤖 Solo
+      </button>
+      {/* Dice-per-turn selector (PHASE-5D) — restarts the game at the new count */}
+      <button
+        onClick={cycleDice}
+        style={{ ...btn(true), background: '#555', minWidth: 64 }}
+        title="Dice per turn — click to cycle 1→2→3→4 (restarts the game; rules are immutable per game)"
+      >
+        🎲 ×{diceCount}
       </button>
       {/* RESOLVE_ROLL and RESOLVE_MOVE are now fired ONLY by GSAP onComplete.
           No manual resolve buttons — the dice tumbles and auto-resolves,
