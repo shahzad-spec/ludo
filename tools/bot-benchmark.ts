@@ -33,14 +33,14 @@ interface PairingResult {
   terminated: number;
 }
 
-function runPairing(a: Difficulty, b: Difficulty, label: string, games: number, baseSeed: number): PairingResult {
+function runPairing(a: Difficulty, b: Difficulty, label: string, games: number, baseSeed: number, dice: 1 | 2 | 3 | 4 = 1): PairingResult {
   let aBeatsB = 0;
   let sumRankA = 0;
   let sumRankB = 0;
   let sumTurns = 0;
   let terminated = 0;
   for (let i = 0; i < games; i++) {
-    const { ranks, turns, terminated: term } = playGame(a, b, baseSeed + i);
+    const { ranks, turns, terminated: term } = playGame(a, b, baseSeed + i, dice);
     if (ranks.red < ranks.green) aBeatsB++;
     sumRankA += ranks.red;
     sumRankB += ranks.green;
@@ -69,12 +69,13 @@ function parseArgs(argv: string[]) {
     seed: parseInt(get('--seed', '42'), 10),
     games: parseInt(get('--games', '200'), 10),
     gamesPro: parseInt(get('--games-pro', '30'), 10),
+    dice: parseInt(get('--dice', '1'), 10) as 1 | 2 | 3 | 4,
     out: get('--out', 'docs/reports/5C-baseline.md'),
   };
 }
 
 function main() {
-  const { seed, games, gamesPro, out } = parseArgs(process.argv.slice(2));
+  const { seed, games, gamesPro, dice, out } = parseArgs(process.argv.slice(2));
   const pairings: { a: Difficulty; b: Difficulty; n: number }[] = [
     { a: 'medium', b: 'easy', n: games },
     { a: 'hard', b: 'easy', n: games },
@@ -87,7 +88,7 @@ function main() {
   for (const { a, b, n } of pairings) {
     const label = `${a}:${b}`;
     const t0 = Date.now();
-    const r = runPairing(a, b, label, n, seed);
+    const r = runPairing(a, b, label, n, seed, dice);
     console.log(
       `[bench] ${label} (${n}g): A beats B ${r.aBeatsB}/${n} = ${pct(r.aBeatsB, n)} | mean rank A=${r.meanRankA} B=${r.meanRankB} | mean turns ${r.meanTurns} | term ${pct(r.terminated, n)} | ${Date.now() - t0}ms`,
     );
@@ -98,7 +99,7 @@ function main() {
   const md = [
     `# 5C Baseline — Placement Ladder`,
     ``,
-    `> Generated ${date}, seed ${seed}, games: non-Pro ${games}, Pro ${gamesPro}.`,
+    `> Generated ${date}, seed ${seed}, dice ${dice}, games: non-Pro ${games}, Pro ${gamesPro}.`,
     `> Weights: committed \`EVAL_WEIGHTS\` + \`SCALE_PARAMS\` (see src/oracle/ai/evaluate.ts). Hard = v1 \`scoreMove\` (F-1).`,
     `> **Placement proxy:** v1 ends at the first winner (\`win.ts:34\`), so 1st = winner;`,
     `> 2nd–4th ranked by finished-token count then colorETF. "A beats B" = rank(A) < rank(B).`,

@@ -50,10 +50,11 @@ export interface GameResult {
   terminated: boolean;
 }
 
-/** Play one 4-seat game (seat0=A, seat1=B, seat2/3 Easy fillers). */
-export function playGame(a: Difficulty, b: Difficulty, seed: number): GameResult {
+/** Play one 4-seat game (seat0=A, seat1=B, seat2/3 Easy fillers).
+ *  `diceCount` overrides the rules preset (PHASE-5D --dice flag). */
+export function playGame(a: Difficulty, b: Difficulty, seed: number, diceCount: 1 | 2 | 3 | 4 = 1): GameResult {
   const colors = colorsForPlayerCount(4); // [red, green, yellow, blue]
-  const rules = { ...soloRules(), bots: colors };
+  const rules = { ...soloRules(), bots: colors, diceCount };
   let state = createInitialState(colors, rules);
   const rng = seededRng(seed);
   const diffFor = (c: Color): Difficulty => (c === 'red' ? a : c === 'green' ? b : 'easy');
