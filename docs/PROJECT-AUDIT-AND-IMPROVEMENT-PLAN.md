@@ -81,6 +81,19 @@ starts until build + lint + tests are green again.
 > *after* tuning; every skip expires at 5C-4). Human playtest verdict on
 > uncalibrated Pro: *"quite acceptable"*. Next: 5C-3 benchmark harness → 5C-4
 > tuning (incl. advantage-scaling wiring as the pre-tuning step).
+>
+> **Update 7 (2026-08-16, PHASE 5C CLOSED — signed off & merged):** Phase 5C
+> completed and fast-forward merged into `main` at `ce4111e` (26 commits,
+> +2,955 lines; 312 tests | 3 documented demotions, lint + build green on
+> main). Delivered: competitive feature eval (ETF, shots, leader tax,
+> anticipation band), paranoid opponent model, TT + capture extensions,
+> advantage-scaling, benchmark harness + overnight tuning (champion rejected —
+> F-3 noise plateau; wiring was the substantive win), and a three-round
+> playtest calibration loop (B-1/B-2 fixed in 5C-6; the 5C-6 overcorrection
+> B-3/B-4 rebalanced in 5C-7 under the user's rule: *a threat that needs 7+
+> must never outbid a real capture*). User sign-off given 2026-08-16.
+> **Next:** multi-dice mode design doc (user-driven feature; overturns R&S
+> §6.2 "likely never"), then the v1 polish/ship pass (WS-2/3/4) resumes.
 
 ---
 
