@@ -34,14 +34,16 @@ export interface SettingField {
   default: boolean | string | number;
   category: SettingCategory;
   /** When this field became available. UI hides fields newer than CURRENT_SCOPE. */
-  since: 'v1' | 'v1.5' | 'v2';
+  since: 'v1' | 'v1.1' | 'v1.5' | 'v2';
 }
 
 /**
  * Single source of truth for which scope the running app surfaces.
- * v1 Settings screens call fieldsForScope(CURRENT_SCOPE).
+ * v1 Settings screens call fieldsForScope(CURRENT_SCOPE). The 'v1.1' level
+ * (PHASE-5D A1) exists so multi-dice can ship contained — it exposes the
+ * diceCount field alone, without unlocking the unbuilt v1.5 batch flags.
  */
-export const CURRENT_SCOPE: 'v1' | 'v1.5' | 'v2' = 'v1';
+export const CURRENT_SCOPE: 'v1' | 'v1.1' | 'v1.5' | 'v2' = 'v1';
 
 /** The full schema. The snapshot test asserts this covers every RulesConfig key. */
 export const SETTING_FIELDS: readonly SettingField[] = [
@@ -80,6 +82,16 @@ export const SETTING_FIELDS: readonly SettingField[] = [
     default: V1_RULES.entryRoll,
     category: 'Dice & Turn Flow',
     since: 'v1',
+  },
+  {
+    key: 'diceCount',
+    label: 'Dice per turn',
+    description: 'Dice rolled each turn. 1 = classic. 2+ rolls a set resolved one die at a time (largest first) — dice can be stacked on one token or split across tokens.',
+    type: 'enum',
+    options: ['1', '2', '3', '4'],
+    default: V1_RULES.diceCount,
+    category: 'Dice & Turn Flow',
+    since: 'v1.1',
   },
   {
     key: 'sixGrantsExtraTurn',
@@ -227,7 +239,12 @@ export const SETTING_FIELDS: readonly SettingField[] = [
 ];
 
 /** Fields the UI should show, filtered by the current scope. */
-export function fieldsForScope(scope: 'v1' | 'v1.5' | 'v2'): SettingField[] {
-  const order: Record<'v1' | 'v1.5' | 'v2', number> = { v1: 0, 'v1.5': 1, v2: 2 };
+export function fieldsForScope(scope: 'v1' | 'v1.1' | 'v1.5' | 'v2'): SettingField[] {
+  const order: Record<'v1' | 'v1.1' | 'v1.5' | 'v2', number> = {
+    v1: 0,
+    'v1.1': 1,
+    'v1.5': 2,
+    v2: 3,
+  };
   return SETTING_FIELDS.filter((f) => order[f.since] <= order[scope]);
 }

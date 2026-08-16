@@ -36,6 +36,11 @@ function reject(state: GameState): ApplyResult {
   return { state, events: [] };
 }
 
+/** The cleared dice object (turn over / game over). A1: value alias is null. */
+function clearedDice(): GameState['dice'] {
+  return { queue: [], rolledSet: [], value: null, rolled: false, capturedInSet: false };
+}
+
 /** Shallow clone with overridden fields (immutable updates). */
 function patch(state: GameState, overrides: Partial<GameState>): GameState {
   return { ...state, ...overrides };
@@ -48,8 +53,10 @@ function handleRequestRoll(state: GameState, rng: () => number): ApplyResult {
   if (isGameOver(state)) return reject(state);
 
   const value = rollDice(rng);
+  // 5D-1a interim: single-die queue (rollSet arrives in 5D-1b). The alias and
+  // rolledSet are populated so the queue invariants hold from the first commit.
   const next = patch(state, {
-    dice: { value, rolled: true },
+    dice: { queue: [value], rolledSet: [value], value, rolled: true, capturedInSet: false },
     phase: 'ROLLING',
   });
   return {
@@ -74,7 +81,7 @@ function handleResolveRoll(state: GameState, value: number): ApplyResult {
     );
     const next = patch(state, {
       phase: 'IDLE',
-      dice: { value: null, rolled: false },
+      dice: clearedDice(),
       validMoves: [],
       currentPlayer: advanced.nextPlayer,
       consecutiveSixes: 0,
@@ -169,7 +176,7 @@ function handleResolveMove(state: GameState): ApplyResult {
       phase: 'GAME_OVER',
       winners,
       validMoves: [],
-      dice: { value: null, rolled: false },
+      dice: clearedDice(),
       turnHistory: [
         ...state.turnHistory,
         {
@@ -191,7 +198,7 @@ function handleResolveMove(state: GameState): ApplyResult {
   const next = patch(movedState, {
     phase: 'IDLE',
     validMoves: [],
-    dice: { value: null, rolled: false },
+    dice: clearedDice(),
     currentPlayer: turn.nextPlayer,
     consecutiveSixes: turn.resetSixes ? 0 : newConsecutiveSixes,
     turnHistory: [
@@ -289,7 +296,7 @@ export function createInitialState(
     tokens: initialTokens(colors),
     turnOrder: [...colors],
     currentPlayer: colors[0],
-    dice: { value: null, rolled: false },
+    dice: clearedDice(),
     phase: 'IDLE',
     validMoves: [],
     consecutiveSixes: 0,

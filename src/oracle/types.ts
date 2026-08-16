@@ -62,6 +62,12 @@ export interface RulesConfig {
   // --- Dice & Turn Flow ---
   /** Roll required to enter the board. Replaces enterOnSix (Step 1 lock). */
   entryRoll: 'six' | 'sixOrOne' | 'any';
+  /**
+   * Dice rolled per turn (PHASE-5D). 1 = v1 behavior (byte-identical, pinned by
+   * the equivalence suite); 2+ = sequential multi-dice — the set resolves one
+   * die at a time, descending (A1), with burn-and-continue for unplayable dice.
+   */
+  diceCount: 1 | 2 | 3 | 4;
   /** Rolling a 6 grants another turn (subject to sixesLimit). */
   sixGrantsExtraTurn: boolean;
   /** Capturing grants another turn. v1: false (simplifies turn logic). */
@@ -104,10 +110,14 @@ export interface RulesConfig {
   challengeMode: boolean;
 }
 
-/** A single completed turn's audit record. */
+/** A single completed turn's audit record. Per-DIE in multi-dice (PHASE-5D):
+ *  a 2-dice turn appends two records. `roll` = the die this record played
+ *  (kept for v1 compatibility); `rolls` = the full set (added 5D, additive). */
 export interface TurnRecord {
   player: Color;
   roll: number;
+  /** The full rolled set for the turn this record belongs to (5D, additive). */
+  rolls?: number[];
   tokenId?: string;
   capturedIds?: string[];
 }
@@ -119,8 +129,22 @@ export interface GameState {
   turnOrder: Color[];
   /** Whose turn it is. */
   currentPlayer: Color;
-  /** Last rolled value (null before first roll / between turns). */
-  dice: { value: number | null; rolled: boolean };
+  /**
+   * Dice state (PHASE-5D queue shape). The A1 COMPAT ALIAS `value` MUST always
+   * equal `queue[0] ?? null` — it is what keeps every v1 reader (tests, tools,
+   * UI) source-compatible. Invariants are pinned by diceQueue.test.ts.
+   */
+  dice: {
+    /** Remaining dice this turn, DESCENDING (A1 Decision 14). v1: length ≤ 1. */
+    queue: number[];
+    /** The full set as rolled (pre-sort), for UI display + history. */
+    rolledSet: number[];
+    /** A1 COMPAT ALIAS === queue[0] ?? null. Never let it drift. */
+    value: number | null;
+    rolled: boolean;
+    /** A2.1: any die in this set captured (Decision 6); cleared at roll + set end. */
+    capturedInSet: boolean;
+  };
   /** Current phase — gates every action. */
   phase: GamePhase;
   /** Legal moves for the current player after a roll (plan §6.1.1). */

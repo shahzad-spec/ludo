@@ -17,6 +17,7 @@ export const V1_RULES: RulesConfig = {
 
   // Dice & Turn Flow
   entryRoll: 'six',           // was enterOnSix: true
+  diceCount: 1,               // v1 preservation; 2+ = multi-dice (PHASE-5D)
   sixGrantsExtraTurn: true,
   extraTurnOnCapture: false,  // was captureGrantsExtraTurn: false
   extraTurnOnFinish: false,   // declare-only (v1.5 Batch B)
