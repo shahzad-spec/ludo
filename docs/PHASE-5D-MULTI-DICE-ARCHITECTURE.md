@@ -11,6 +11,12 @@
 > **Companion docs:** `ARCHITECTURE-v3.md` (boundaries), `RULES-AND-SETTINGS-ARCHITECTURE.md`
 > (interaction-matrix discipline), `PHASE-5C-COMPETITIVE-BOT.md` (the bot
 > machinery this extends — anticipation band, ETF, paranoid model).
+>
+> **Amendment A1 (code-level verification pass, 2026-08-16):** three gaps found
+> and fixed pre-approval — (1) queue order locked **descending** (new Decision
+> 14), (2) `dice.value` kept as a compat alias so the unmodified-tests gate
+> holds as written, (3) threat model corrected from dice-sum to the
+> **prefix-landing distribution**. Architecture unchanged; amendments marked A1.
 
 ---
 
@@ -69,6 +75,7 @@ twice.
 | 11 | Bot search budget | Unchanged 120 ms cap; chance node branches over **unordered** dice multisets with probability weights (21 outcomes for 2 dice, not 36) | Keeps Pro responsive; unordered weighting is exact for uniform dice |
 | 12 | Scope gating | New `SettingField` with `since: 'v1.1'`; `CURRENT_SCOPE` bumps when the Setup UI (WS-2) or the interim selector ships | R&S schema discipline — UI renders from data |
 | 13 | Anti-stall | The F-1 stall-guard (100% termination, mean turns ≤ 2500) runs per diceCount at the 5D gate | Multi-dice must not reintroduce camping/stall classes |
+| 14 | Queue order (A1) | **Descending — largest die first** | Order changes reachable tactics ({3,6} vs a victim at distance 6: descending captures directly; ascending only if the 3 has somewhere else to go). Player-chosen order would need two moves sharing one token → resurrects the 5B-2 `REQUEST_MOVE` ambiguity → contract widening. Descending is capture-friendly (matches the sniping intent) and keeps the contract untouched. **Trade-off (stated):** the player chooses which *token* each die moves, but not the *order* |
 
 ---
 
@@ -77,19 +84,28 @@ twice.
 ### 3.1 State shape
 
 ```ts
-// types.ts — the only state change
+// types.ts — the state change, with the A1 compat alias
 interface GameState {
   // ... unchanged ...
   dice: {
     queue: number[];      // remaining dice to play this turn (v1: length ≤ 1)
     rolledSet: number[];  // the full rolled set, for UI display + history
+    value: number | null; // A1 COMPAT ALIAS === queue[0] ?? null — v1 readers
+                          // keep working untouched (see blast radius below)
     rolled: boolean;
   };
 }
 ```
 
-`dice.value` (v1 scalar) is replaced by the queue. **Compatibility rule:**
-every v1 behavior is recovered exactly at `diceCount: 1` — pinned by tests.
+`dice.value` (v1 scalar) survives as a **derived alias of `queue[0]`** (A1).
+**Compatibility rule:** every v1 behavior is recovered exactly at
+`diceCount: 1` — pinned by tests.
+
+**Blast radius (A1):** `dice.value` is read by `ladder.test.ts`,
+`useGame.fullgame.test.ts`, `tools/game-runner.ts` (feeds bench + tune + the
+F-1 stall guard), `App.tsx`, `Dice.tsx`, and `DebugHarness.tsx`. The alias
+keeps all of them untouched — without it the 5D-1 "prior tests unmodified"
+gate could not hold and the 5D-3 stall gate could not even run.
 
 `TurnRecord` gains `rolls: number[]` (was `roll: number`) — history is
 append-only data; the audit trail keeps both shapes readable.
@@ -98,7 +114,8 @@ append-only data; the audit trail keeps both shapes readable.
 
 ```
 REQUEST_ROLL (IDLE)      → roll diceCount dice; phase=ROLLING; emit DICE_ROLLED{values[]}
-RESOLVE_ROLL (ROLLING)   → queue = sorted roll; compute legal moves for queue[0]
+RESOLVE_ROLL (ROLLING)   → queue = roll sorted DESCENDING (Decision 14);
+                           compute legal moves for queue[0]
                            → SELECTING_TOKEN, or burn-loop (§3.3) if none
 REQUEST_MOVE             → unchanged (plays queue[0])
 RESOLVE_MOVE             → commit move; captures resolved per-die (v1 logic)
@@ -155,6 +172,11 @@ multi-dice behavior by listening, not by knowing.**
 `validateRules`: no new hard conflicts; soft warning for `diceCount: 4` +
 `turnTimerSec` ("very fast sets may expire mid-choice").
 
+**A1 scope note:** `'v1.1'` is a **new scope level** added to the
+`SettingField.since` union (`'v1' | 'v1.1' | 'v1.5' | 'v2'`) so 5D's setting
+ships contained — bumping `CURRENT_SCOPE` to `'v1.1'` exposes `diceCount`
+without exposing the unfinished v1.5 batch flags.
+
 ---
 
 ## 4. Director (rendering & animation)
@@ -190,10 +212,19 @@ export function reachBandMax(k: number): number { return 6 * k; }
 ```
 
 - **Exposure** (`threats.ts`): an opponent holding k dice threatens my cell at
-  any distance 1..6k with stacked play. Probability model: P(exact d with k
-  dice) via standard dice-sum distribution (closed form; table-cached),
-  replacing the flat 1/6. Split-play pressure (two tokens advancing) is
-  conservatively ignored in v5D — noted as a tuning lever, not a launch gate.
+  any distance 1..6k with stacked play. Probability model (A1 — **prefix
+  landings, not sums**): a token playing all k dice lands on EVERY prefix sum
+  of the descending-sorted dice — {6,2} lands 6, then 8 — and a capture
+  happens on **any** landing. So P(threat at d) = P(d is a prefix landing),
+  which strictly CONTAINS the plain dice-sum distribution ({6,2} threatens 6
+  even though its sum is 8 — the sum-only model would call it unreachable,
+  wrong exactly where sniping lives). At k=1 the two coincide, which is why v1
+  was correct. Table-cached. Invariants: (a) reduces exactly to flat 1/6 at
+  k=1; (b) pointwise superset of the sum distribution; (c) entries are per-d
+  marginal probabilities — they do NOT sum to 1 over d, and the sum-only
+  symmetry P(d)=P(7k−d) must never be applied here. Split-play pressure (two
+  tokens advancing) is conservatively ignored in v5D — noted as a tuning lever,
+  not a launch gate.
 - **Anticipation band** (`ANTICIPATION_BAND_MIN/MAX`): widen dynamically —
   immediate zone 1..6k, anticipation zone (6k+1)..(12k). At diceCount 2, the
   user's "sniping from far behind" is literally the 7–12 zone becoming
@@ -233,9 +264,9 @@ override — small extension), not a launch blocker.
 
 | Step | Deliverable | Gate |
 |---|---|---|
-| **5D-1** | Engine queue contract (§3.1–3.3): state shape, rollSet, burn-loop, per-die RESOLVE_MOVE; `diceCount: 1` equivalence suite | New tests green + **all 315 prior tests unmodified & green** (v1 equivalence is the gate) |
+| **5D-1** | Engine queue contract (§3.1–3.3): state shape **incl. the `value` compat alias (A1)**, rollSet, burn-loop, per-die RESOLVE_MOVE; `diceCount: 1` equivalence suite | New tests green + **all 315 prior tests unmodified & green** (v1 equivalence is the gate; the alias is what makes this hold) |
 | **5D-2** | Interaction rulings (§3.5) + schema field + validator rows; events widened (§3.4) | Validator tests; event consumers compile; frozen gate green |
-| **5D-3** | Bot adaptation (§5): dice-aware bands, dice-sum probability tables, ETF functions, unordered chance node | Feature tests (band geometry at k=2, probability table sums = 1, ETF monotonicity per diceCount) + depth-4 perf ≤ 120 ms + stall-guard per diceCount |
+| **5D-3** | Bot adaptation (§5): dice-aware bands, prefix-landing threat tables (A1), ETF functions, unordered chance node | Feature tests (band geometry at k=2, threat-table invariants per A1 — k=1 reduction + superset-of-sums + per-d marginals; sum-table invariants pinned separately, ETF monotonicity per diceCount) + depth-4 perf ≤ 120 ms + stall-guard per diceCount |
 | **5D-4** | Director: multi-dice roll animation, queue pips, dim-on-play, burn blip, pacing beat | Manual visual gate; no Oracle changes |
 | **5D-5** | Entry point: interim ControlBar selector now; Setup screen inherits when WS-2 lands; `CURRENT_SCOPE` bump | A 2-dice hotseat game and a 2-dice solo-vs-Pro game both playable end-to-end |
 | **5D-6** | Playtest + benchmark sanity (bench run at diceCount 2 — regression-only, no ladder claims per F-3) | User sign-off checklist: faster games ✓, same/different-token choice ✓, sniping visible ✓, no stall ✓ |
@@ -266,7 +297,7 @@ frozen; v1 at `diceCount: 1` must remain byte-identical in behavior.
 | Chance-node blowup degrades Pro below usefulness | Unordered multisets (21 not 36); TT; accept ~1 ply less depth — verified by the perf gate, not assumed |
 | Burn-loop edge cases (queue + six + capture + finish in one set) | 5D-1's equivalence suite includes crafted set-sequences; phase machine untouched, so v1 reasoning applies |
 | Games become TOO fast / feel shallow at 3–4 dice | Default stays 1; 2 ships as the promoted preset; 3–4 are opt-in experiments |
-| Dice-sum probability table bugs | Table unit-tested: rows sum to 1, symmetry P(d)=P(7k−d)… standard invariants |
+| Threat probability table bugs (D-3 bug class) | Prefix-landing table (A1) with its OWN invariants: k=1 reduction to flat 1/6, pointwise superset of sums, per-d marginals. Sum-only invariants (rows-sum-to-1, symmetry) are pinned for the sum table and explicitly forbidden on the threat table |
 | Director pacing confusion (whose die is this?) | Queue pips + dim-on-play; hops are per-die so ownership is visible |
 | 5C camping/hunting balance shifts under wider bands | Stall-guard per diceCount (Decision 13) + the 5C-7 invariant re-pinned at ≤ 6k |
 | WS-2 (Setup UI) not built yet | Interim ControlBar selector (5D-5); the schema field is ready so WS-2 renders it for free |
