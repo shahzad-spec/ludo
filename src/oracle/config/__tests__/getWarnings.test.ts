@@ -47,3 +47,16 @@ describe('getWarnings — §3.2 soft warns', () => {
     expect(getWarnings(rules({ finishRule: 'bounce' }))).toEqual([]);
   });
 });
+
+describe('getWarnings — PHASE-5D multi-dice row', () => {
+  it('warns on 3+ dice with a turn timer (sets may expire mid-choice)', () => {
+    const warnings = getWarnings(rules({ diceCount: 3, turnTimerSec: 30 }));
+    expect(warnings.length).toBe(1);
+    expect(warnings[0].toLowerCase()).toContain('expire');
+  });
+
+  it('no warning at 2 dice even with a timer, and none at 3 dice untimed', () => {
+    expect(getWarnings(rules({ diceCount: 2, turnTimerSec: 30 }))).toEqual([]);
+    expect(getWarnings(rules({ diceCount: 3, turnTimerSec: null }))).toEqual([]);
+  });
+});

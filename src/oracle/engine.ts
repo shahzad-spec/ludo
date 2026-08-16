@@ -131,6 +131,10 @@ function handleResolveRoll(state: GameState, value: number): ApplyResult {
   events.push({ type: 'NO_LEGAL_MOVE', player: state.currentPlayer, value: firstHead });
   if (advanced.advanced) {
     events.push({ type: 'TURN_CHANGED', nextPlayer: advanced.nextPlayer });
+  } else if (state.rules.diceCount > 1) {
+    // 5D-2 (ruling 2): a burned six-keep announces at diceCount > 1, matching
+    // played-set keeps. Count 1 stays silent — v1 event-stream equivalence.
+    events.push({ type: 'TURN_CHANGED', nextPlayer: advanced.nextPlayer, extraTurn: true });
   }
   return { state: next, events };
 }

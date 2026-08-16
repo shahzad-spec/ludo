@@ -77,5 +77,26 @@ export function getWarnings(rules: RulesConfig): string[] {
     warnings.push('First token home wins immediately — very fast games.');
   }
 
+  // 4. diceCount >= 3 × turnTimer (PHASE-5D §3.5) — sets resolve per die; a
+  // short timer may expire the turn mid-set.
+  if (rules.diceCount >= 3 && rules.turnTimerSec !== null) {
+    warnings.push(
+      'Three or more dice with a turn timer — very fast sets may expire mid-choice.',
+    );
+  }
+
   return warnings;
 }
+
+/**
+ * PHASE-5D §3.5 interaction-matrix rulings (multi-dice × existing flags).
+ * Recorded here per the R&S §3 discipline; engine-level behavior for the
+ * v1.5 flags lands with their batches:
+ *  - diceCount > 1 × optionalPass: pass applies to the WHOLE remaining set.
+ *  - diceCount > 1 × turnTimerSec: the timer covers the whole set (warning 4
+ *    above covers the fast-expiry footgun).
+ *  - diceCount > 1 × forcedCapture: if any die can capture, that die's legal
+ *    moves restrict to captures — checked PER DIE, not per set.
+ *  - diceCount > 1 × finishRule 'exact': unchanged per die — each individual
+ *    die must land exactly; overshoot is illegal for that die alone.
+ */

@@ -213,7 +213,14 @@ describe('RESOLVE_ROLL + burn-loop (5D-1c)', () => {
       twoDice,
     );
     const res = applyAction(state, { type: 'RESOLVE_ROLL', value: 6 });
-    expect(res.events.map((e) => e.type)).toEqual(['DIE_BURNED', 'DIE_BURNED', 'NO_LEGAL_MOVE']);
+    // 5D-2 (ruling 2): a burned six-keep ANNOUNCES at diceCount > 1
+    // (consistency with played-set keeps); count 1 stays silent (equivalence).
+    expect(res.events).toEqual([
+      { type: 'DIE_BURNED', player: 'red', value: 6 },
+      { type: 'DIE_BURNED', player: 'red', value: 3 },
+      { type: 'NO_LEGAL_MOVE', player: 'red', value: 6 },
+      { type: 'TURN_CHANGED', nextPlayer: 'red', extraTurn: true },
+    ]);
     expect(res.state.currentPlayer).toBe('red'); // extra turn — the set had a 6
     expect(res.state.consecutiveSixes).toBe(0); // v1 pass route resets
     expectDiceInvariants(res.state);
@@ -385,5 +392,23 @@ describe('per-die RESOLVE_MOVE + end-of-set (5D-1d)', () => {
     expect(res.events).toEqual([
       { type: 'TURN_CHANGED', nextPlayer: 'red', extraTurn: true },
     ]);
+  });
+});
+
+describe('burned six-keep announce (5D-2 ruling 2)', () => {
+  it('count 1 stays SILENT on a no-move six-keep (equivalence)', () => {
+    // All red at p54: the 6 has no legal move; v1 kept the turn silently.
+    const state = stateWithPlacements(
+      {
+        'red-0': { color: 'red', progress: 54 },
+        'red-1': { color: 'red', progress: 54 },
+        'red-2': { color: 'red', progress: 54 },
+        'red-3': { color: 'red', progress: 54 },
+      },
+      { currentPlayer: 'red', phase: 'ROLLING', dice: { queue: [6], rolledSet: [6], value: 6, rolled: true, capturedInSet: false } },
+    );
+    const res = applyAction(state, { type: 'RESOLVE_ROLL', value: 6 });
+    expect(res.events).toEqual([{ type: 'NO_LEGAL_MOVE', player: 'red', value: 6 }]);
+    expect(res.state.currentPlayer).toBe('red'); // six kept the turn, silently
   });
 });
