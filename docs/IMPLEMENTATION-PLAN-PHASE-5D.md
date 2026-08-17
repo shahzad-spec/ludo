@@ -282,6 +282,58 @@ difficulty-button pattern), `settingsSchema.ts` (`CURRENT_SCOPE = 'v1.1'`).
 
 ---
 
+## 8.1 Step 5D-7 — Amendment A3 (user playtest rulings, BEFORE sign-off)
+
+First playtest overturned two decisions (design doc Amendment A3). Both fixes
+are equivalence-safe at `diceCount: 1` and land before merge.
+
+### 5D-7a — All-six extra turn (A3.2, RED→GREEN, small)
+
+**Files:** `engine.ts` (`endOfSet` + fully-burned path), `diceQueue.test.ts`
+additions.
+
+- `rolledSix = rolledSet.every(d => d === 6)` everywhere the set's six-ness is
+  read (end-of-set AND the fully-burned NO_LEGAL_MOVE path — keep them
+  consistent or the announce/silence asymmetry returns).
+- **Tests**: 2-dice `[6,4]` → NO extra turn (the playtest case); `[6,6]` →
+  exactly ONE extra turn + consecutiveSixes +1; `[6,6,6]`/`[6,6,6,6]` same
+  ruling; diceCount-1 `[6]` → extra turn (equivalence anchor, `every` ≡
+  `includes` for one die). Gate: full suite green, 315-prior rule holds.
+
+### 5D-7b — Player-chosen die order (A3.1, RED→GREEN, the larger half)
+
+**Files:** `types.ts` (`REQUEST_MOVE` gains `dieValue?: number`), `engine.ts`
+(`handleResolveRoll` computes moves across ALL remaining dice — burn-loop
+removes only dice with zero moves of their own; `pickMove` resolves by
+(tokenId, dieValue), omitted → queue head), `legalMoves.ts` (per-die move
+production tagged with the die), `botDriver.ts` + `policy.ts`/`search.ts`
+(pass/choose `dieValue`; descending stays the bot default).
+
+- **Contract guard:** at `diceCount: 1` every code path is byte-identical
+  (omitted `dieValue` → queue head); the (tokenId, dieValue) pair is unique,
+  so the 5B-2 ambiguity stays dead — pin it: two same-value dice `{6,6}`
+  moving one token are interchangeable (either resolves identically).
+- **Tests**: `{3,6}` set, victim at distance 6 → human plays 6 first and
+  captures (the playtest case); same set, 3 first → different landing;
+  ambiguous tokenId without `dieValue` at k=2 → engine rejects (no guessing);
+  burn-loop with mixed playability per die; bots still terminate (stall-guard);
+  equivalence battery re-run (the hard gate).
+
+### 5D-7c — Director affordance (manual gate)
+
+- SELECTING_TOKEN with k>1: remaining-pips readout is the die chooser —
+  highlight legal targets per die; when one token is movable by two different
+  dice, pip selection disambiguates (tap pip → tap token). Bots unaffected.
+- **Gate**: human plays `{3,6}` both orders in a real game; dim-on-play and
+  the announce flow still correct; 5D-4 visual items re-checked.
+
+### 5D-7d — Re-playtest (5D-6 checklist + the two A3 cases)
+
+- Same/different-token assignment **with free order**, all-six extra turns,
+  sniping, no stalls, v1 identical. Then sign-off → merge.
+
+---
+
 ## 9. Risk register (execution-level, beyond the design doc's)
 
 | Risk | Mitigation |

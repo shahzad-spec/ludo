@@ -17,6 +17,15 @@
 > 14), (2) `dice.value` kept as a compat alias so the unmodified-tests gate
 > holds as written, (3) threat model corrected from dice-sum to the
 > **prefix-landing distribution**. Architecture unchanged; amendments marked A1.
+>
+> **Amendment A3 (user playtest rulings, 2026-08-17):** two decisions overturned
+> by the designer after hands-on play — **A3.1:** players now **choose which
+> die to play next** (Decision 14 revised: descending survives as bot default /
+> tie-break only; `REQUEST_MOVE` gains additive optional `dieValue`);
+> **A3.2:** an extra turn requires **ALL dice to show six** (Decision 5
+> revised: `rolledSet.every(d => d === 6)`; any-six snowballed at ~31% of
+> 2-dice rolls). Both are equivalence-safe at `diceCount: 1` (single-die
+> behavior byte-identical). Implemented as step 5D-7 before sign-off.
 
 ---
 
@@ -66,7 +75,7 @@ twice.
 | 2 | Dice counts | `diceCount: 1 \| 2 \| 3 \| 4` in `RulesConfig` | User asked 2–4; 1 stays the default and the v1-preservation mode |
 | 3 | Default for v1.1 ship | `diceCount: 1` unchanged; 2-dice available as an explicit preset/setting | v1 behavior must remain byte-identical unless the player opts in |
 | 4 | Unplayable die | **Burn and continue** — if no legal move exists for the current die, it is discarded and the next die is played; the turn ends only when the queue empties | Standard casual-Ludo ruling; keeps tempo high (user goal #1) |
-| 5 | Sixes & extra turns | Any 6 in the rolled set grants the extra turn (when `sixGrantsExtraTurn`); `sixesLimit` counts **turns containing ≥ 1 six**, not individual dice | Preserves v1 feel; counting individual dice would forfeit turns absurdly fast at 3–4 dice |
+| 5 | Sixes & extra turns **(A3.2 — revised by user playtest)** | An extra turn requires **ALL dice in the set to show six** (`rolledSet.every(d => d === 6)` when `sixGrantsExtraTurn`); `sixesLimit` counts all-six turns. Any-six snowballed (~31% of 2-dice rolls); all-six ≈ 3% restores restraint. Byte-identical at diceCount 1 (`every` ≡ `includes` for one die) | User ruling, 2026-08-17 playtest |
 | 6 | Capture-grants-extra-turn | Evaluated once, at **end of set**, using whether any die-move captured | One extra-turn decision per turn, not per die |
 | 7 | Win during a set | Game ends immediately when the winning token finishes (v1 rule, unchanged — engine already terminates at first winner) | R&S consistency; no zombie dice |
 | 8 | Yard entry | A die of the required entry value (per `entryRoll`) frees one yard token; other dice in the same set remain playable | Follows from sequential resolution automatically |
@@ -75,7 +84,7 @@ twice.
 | 11 | Bot search budget | Unchanged 120 ms cap; chance node branches over **unordered** dice multisets with probability weights (21 outcomes for 2 dice, not 36) | Keeps Pro responsive; unordered weighting is exact for uniform dice |
 | 12 | Scope gating | New `SettingField` with `since: 'v1.1'`; `CURRENT_SCOPE` bumps when the Setup UI (WS-2) or the interim selector ships | R&S schema discipline — UI renders from data |
 | 13 | Anti-stall | The F-1 stall-guard (100% termination, mean turns ≤ 2500) runs per diceCount at the 5D gate | Multi-dice must not reintroduce camping/stall classes |
-| 14 | Queue order (A1) | **Descending — largest die first** | Order changes reachable tactics ({3,6} vs a victim at distance 6: descending captures directly; ascending only if the 3 has somewhere else to go). Player-chosen order would need two moves sharing one token → resurrects the 5B-2 `REQUEST_MOVE` ambiguity → contract widening. Descending is capture-friendly (matches the sniping intent) and keeps the contract untouched. **Trade-off (stated):** the player chooses which *token* each die moves, but not the *order* |
+| 14 | Queue order **(A3.1 — revised by user playtest)** | **Player chooses the next die** from the remaining queue: `SELECTING_TOKEN` presents legal moves across all remaining dice; `REQUEST_MOVE` gains additive optional `dieValue` and the engine resolves by (tokenId, dieValue). Descending order survives as the **bot default and tie-break** (unspecified `dieValue` at diceCount 1 → queue head; the 5B-2 ambiguity stays dead because the pair is unique). No new phases | User ruling, 2026-08-17: "I can't choose which dice I use first". Original descending-lock trade-off rejected after hands-on play |
 
 ---
 
@@ -114,10 +123,12 @@ append-only data; the audit trail keeps both shapes readable.
 
 ```
 REQUEST_ROLL (IDLE)      → roll diceCount dice; phase=ROLLING; emit DICE_ROLLED{values[]}
-RESOLVE_ROLL (ROLLING)   → queue = roll sorted DESCENDING (Decision 14);
-                           compute legal moves for queue[0]
+RESOLVE_ROLL (ROLLING)   → queue = roll sorted DESCENDING (A3.1: bots' play
+                           order / tie-break; humans choose per A3.1);
+                           compute legal moves across ALL remaining dice
                            → SELECTING_TOKEN, or burn-loop (§3.3) if none
-REQUEST_MOVE             → unchanged (plays queue[0])
+REQUEST_MOVE             → additive optional `dieValue` (A3.1): resolves by
+                           (tokenId, dieValue); omitted → queue head (v1 path)
 RESOLVE_MOVE             → commit move; captures resolved per-die (v1 logic)
                            → queue.shift()
                            → queue non-empty: legal moves for next die → SELECTING_TOKEN
