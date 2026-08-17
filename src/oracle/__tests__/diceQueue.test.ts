@@ -35,6 +35,7 @@ describe('dice queue — initial state shape (5D-1a)', () => {
       value: null,
       rolled: false,
       capturedInSet: false,
+      activeDie: null,
     });
     expectDiceInvariants(state);
   });
@@ -153,14 +154,14 @@ function rollingWithQueue(
     currentPlayer: 'red',
     phase: 'ROLLING',
     rules,
-    dice: { queue, rolledSet: [...queue].sort((a, b) => a - b), value: queue[0], rolled: true, capturedInSet: false },
+    dice: { queue, rolledSet: [...queue].sort((a, b) => a - b), value: queue[0], rolled: true, capturedInSet: false, activeDie: null },
   });
 }
 
 describe('RESOLVE_ROLL + burn-loop (5D-1c)', () => {
   const twoDice = { ...V1_RULES, diceCount: 2 as const };
 
-  it('burns an unplayable head die and continues to a playable one', () => {
+  it('a dead die is presented lazily: playable die first, dead die burns at set end (A3.1)', () => {
     // Every red token overshoots on 6 (p51-53 + 6 > 56) but is legal on 3.
     const state = rollingWithQueue(
       {
@@ -172,13 +173,21 @@ describe('RESOLVE_ROLL + burn-loop (5D-1c)', () => {
       [6, 3],
       twoDice,
     );
+    // A3.1: presentation offers the PLAYABLE die immediately (lazy burn — the
+    // dead 6 stays in the queue while the 3 has moves; Decision 8 preserved).
     const res = applyAction(state, { type: 'RESOLVE_ROLL', value: 6 });
-    expect(res.events).toEqual([{ type: 'DIE_BURNED', player: 'red', value: 6 }]);
+    expect(res.events).toEqual([]);
     expect(res.state.phase).toBe('SELECTING_TOKEN');
-    expect(res.state.dice.queue).toEqual([3]);
-    expect(res.state.dice.value).toBe(3);
+    expect(res.state.dice.queue).toEqual([6, 3]); // nothing burned yet
     expect(res.state.validMoves.length).toBeGreaterThan(0);
     expectDiceInvariants(res.state);
+    // Playing the 3 (explicitly — the head 6 has no moves) leaves the 6 dead →
+    // it burns and the set ends (turn passes).
+    const after = playDie(res.state, 'red-0', 3);
+    expect(after.events.some((e) => e.type === 'DIE_BURNED' && e.value === 6)).toBe(true);
+    expect(after.state.phase).toBe('IDLE');
+    expect(after.state.currentPlayer).toBe('green');
+    expectDiceInvariants(after.state);
   });
 
   it('fully burned set lands on the v1 NO_LEGAL_MOVE route (turn pass, dice cleared)', () => {
@@ -251,9 +260,15 @@ describe('RESOLVE_ROLL + burn-loop (5D-1c)', () => {
 });
 
 /** REQUEST_MOVE + RESOLVE_MOVE for one die (the Director's per-die cycle).
+ *  A3.1: passes the queue HEAD as dieValue (the bot/descending default) — a bare
+ *  tokenId is rejected at k=2 when two dice could move the same token.
  *  Returns the RESOLVE_MOVE ApplyResult — use .state to chain, .events to assert. */
-function playDie(state: GameState, tokenId: string) {
-  const mid = applyAction(state, { type: 'REQUEST_MOVE', tokenId });
+function playDie(state: GameState, tokenId: string, die?: number) {
+  const mid = applyAction(state, {
+    type: 'REQUEST_MOVE',
+    tokenId,
+    dieValue: die ?? state.dice.queue[0] ?? undefined,
+  });
   return applyAction(mid.state, { type: 'RESOLVE_MOVE' });
 }
 
@@ -407,7 +422,7 @@ describe('burned six-keep announce (5D-2 ruling 2)', () => {
         'red-2': { color: 'red', progress: 54 },
         'red-3': { color: 'red', progress: 54 },
       },
-      { currentPlayer: 'red', phase: 'ROLLING', dice: { queue: [6], rolledSet: [6], value: 6, rolled: true, capturedInSet: false } },
+      { currentPlayer: 'red', phase: 'ROLLING', dice: { queue: [6], rolledSet: [6], value: 6, rolled: true, capturedInSet: false, activeDie: null } },
     );
     const res = applyAction(state, { type: 'RESOLVE_ROLL', value: 6 });
     expect(res.events).toEqual([{ type: 'NO_LEGAL_MOVE', player: 'red', value: 6 }]);
@@ -459,5 +474,87 @@ describe('A3.2 — ALL-six extra turns (5D-7a)', () => {
     s = playDie(s, 'red-0').state;
     expect(s.currentPlayer).toBe('red');
     expect(s.consecutiveSixes).toBe(1);
+  });
+});
+
+describe('A3.1 — player-chosen die order (5D-7b)', () => {
+  const twoDice = { ...V1_RULES, diceCount: 2 as const };
+
+  function rolled(placements: Parameters<typeof stateWithPlacements>[0], drawn: number[]) {
+    const s = stateWithPlacements(placements, { currentPlayer: 'red', rules: twoDice });
+    return applyAction(s, { type: 'REQUEST_ROLL' }, pinnedRng(drawn)).state;
+  }
+
+  it('the playtest case: {3,6} — playing the 6 first captures the victim at distance 6', () => {
+    // red-0 p10 (cell 10); green-0 p6 → cell 19... victim at distance 6 = cell 16 → green p3.
+    let s = rolled({
+      'red-0': { color: 'red', progress: 10 },
+      'green-0': { color: 'green', progress: 3 }, // cell 16, distance 6, non-safe
+    }, [3, 6]);
+    s = applyAction(s, { type: 'RESOLVE_ROLL', value: 6 }).state;
+    expect(s.phase).toBe('SELECTING_TOKEN');
+    // Union menu: red-0 movable by BOTH dice (to 13 or 16).
+    expect(s.validMoves.filter((m) => m.tokenIds[0] === 'red-0').length).toBe(2);
+    const mid = applyAction(s, { type: 'REQUEST_MOVE', tokenId: 'red-0', dieValue: 6 });
+    expect(mid.state.phase).toBe('ANIMATING_MOVE');
+    const res = applyAction(mid.state, { type: 'RESOLVE_MOVE' });
+    expect(res.state.tokens['red-0'].progress).toBe(16); // the 6 was played
+    expect(res.state.dice.queue).toEqual([3]); // the 3 remains
+    expect(res.state.phase).toBe('SELECTING_TOKEN'); // die 2 awaits
+    expect(res.events.some((e) => e.type === 'TOKEN_CAPTURED')).toBe(true);
+  });
+
+  it('same set, playing the 3 first lands elsewhere (no capture) — the ORDER is the player\u2019s', () => {
+    let s = rolled({
+      'red-0': { color: 'red', progress: 10 },
+      'green-0': { color: 'green', progress: 3 },
+    }, [3, 6]);
+    s = applyAction(s, { type: 'RESOLVE_ROLL', value: 6 }).state;
+    const mid = applyAction(s, { type: 'REQUEST_MOVE', tokenId: 'red-0', dieValue: 3 });
+    const res = applyAction(mid.state, { type: 'RESOLVE_MOVE' });
+    expect(res.state.tokens['red-0'].progress).toBe(13); // the 3 was played
+    expect(res.state.dice.queue).toEqual([6]);
+    expect(res.events.some((e) => e.type === 'TOKEN_CAPTURED')).toBe(false);
+  });
+
+  it('ambiguous tokenId WITHOUT dieValue at k=2 is REJECTED (no guessing)', () => {
+    let s = rolled({ 'red-0': { color: 'red', progress: 10 } }, [3, 6]);
+    s = applyAction(s, { type: 'RESOLVE_ROLL', value: 6 }).state;
+    const rejected = applyAction(s, { type: 'REQUEST_MOVE', tokenId: 'red-0' });
+    expect(rejected.state).toBe(s); // unchanged reference — rejected
+    expect(rejected.events).toEqual([]);
+  });
+
+  it('unambiguous tokenId without dieValue resolves (only one die can move the token)', () => {
+    // red-0 p51: die 6 overshoots (57 > 56 illegal), die 3 legal (54) → unique.
+    let s = rolled({ 'red-0': { color: 'red', progress: 51 } }, [3, 6]);
+    s = applyAction(s, { type: 'RESOLVE_ROLL', value: 6 }).state;
+    const mid = applyAction(s, { type: 'REQUEST_MOVE', tokenId: 'red-0' });
+    expect(mid.state.phase).toBe('ANIMATING_MOVE');
+    const res = applyAction(mid.state, { type: 'RESOLVE_MOVE' });
+    expect(res.state.tokens['red-0'].progress).toBe(54);
+    expect(res.state.dice.queue).toEqual([6]);
+  });
+
+  it('contract guard: {6,6} — two same-value dice are interchangeable (bare tokenId resolves)', () => {
+    let s = rolled({ 'red-0': { color: 'red', progress: 10 } }, [6, 6]);
+    s = applyAction(s, { type: 'RESOLVE_ROLL', value: 6 }).state;
+    const mid = applyAction(s, { type: 'REQUEST_MOVE', tokenId: 'red-0' }); // no dieValue
+    expect(mid.state.phase).toBe('ANIMATING_MOVE'); // not rejected — same value twice
+    const res = applyAction(mid.state, { type: 'RESOLVE_MOVE' });
+    expect(res.state.tokens['red-0'].progress).toBe(16);
+    expect(res.state.dice.queue).toEqual([6]);
+  });
+
+  it('Decision 8 preserved: yard entry leaves the other die playable', () => {
+    let s = rolled({}, [6, 3]); // all yard
+    s = applyAction(s, { type: 'RESOLVE_ROLL', value: 6 }).state;
+    expect(s.dice.queue).toEqual([6, 3]); // the 3 did NOT burn at presentation
+    const mid = applyAction(s, { type: 'REQUEST_MOVE', tokenId: 'red-0', dieValue: 6 });
+    const res = applyAction(mid.state, { type: 'RESOLVE_MOVE' });
+    expect(res.state.tokens['red-0'].progress).toBe(0); // entered
+    expect(res.state.phase).toBe('SELECTING_TOKEN'); // the 3 is now playable
+    expect(res.state.dice.queue).toEqual([3]);
+    expect(res.state.validMoves.length).toBeGreaterThan(0);
   });
 });

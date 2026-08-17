@@ -5,7 +5,7 @@
  * what lets the two CLI tools coexist without one triggering the other.
  */
 
-import { applyAction, createInitialState, colorsForPlayerCount } from '../src/oracle/engine';
+import { applyAction, createInitialState, colorsForPlayerCount, inferDieValue } from '../src/oracle/engine';
 import { chooseBotMove } from '../src/oracle/ai/policy';
 import { soloRules } from '../src/oracle/config/rulesPreset';
 import { colorETF } from '../src/oracle/ai/features';
@@ -68,7 +68,14 @@ export function playGame(a: Difficulty, b: Difficulty, seed: number, diceCount: 
       state = applyAction(state, { type: 'RESOLVE_ROLL', value: state.dice.value ?? 1 }).state;
     } else if (state.phase === 'SELECTING_TOKEN') {
       const move = chooseBotMove(state, state.validMoves, diffFor(state.currentPlayer), rng);
-      if (move) state = applyAction(state, { type: 'REQUEST_MOVE', tokenId: move.tokenIds[0] }).state;
+      if (move) {
+        // A3.1: name the die (union menu can hold two moves per token).
+        state = applyAction(state, {
+          type: 'REQUEST_MOVE',
+          tokenId: move.tokenIds[0],
+          dieValue: inferDieValue(state, move) ?? undefined,
+        }).state;
+      }
     } else if (state.phase === 'ANIMATING_MOVE') {
       state = applyAction(state, { type: 'RESOLVE_MOVE' }).state;
     }

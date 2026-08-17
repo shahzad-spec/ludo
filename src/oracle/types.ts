@@ -144,6 +144,9 @@ export interface GameState {
     rolled: boolean;
     /** A2.1: any die in this set captured (Decision 6); cleared at roll + set end. */
     capturedInSet: boolean;
+    /** A3.1: the die consumed by the pending REQUEST_MOVE (entry moves cannot
+     *  be re-inferred at RESOLVE_MOVE); null outside ANIMATING_MOVE. */
+    activeDie: number | null;
   };
   /** Current phase — gates every action. */
   phase: GamePhase;
@@ -166,7 +169,15 @@ export interface GameState {
 export type Action =
   | { type: 'REQUEST_ROLL' }
   | { type: 'RESOLVE_ROLL'; value: number } // Director, after dice animation
-  | { type: 'REQUEST_MOVE'; tokenId: string }
+  | {
+      type: 'REQUEST_MOVE';
+      tokenId: string;
+      /** A3.1: which remaining die plays this token. Omitted at diceCount 1
+       *  (the single die); at k>1 REQUIRED when two dice could move the token
+       *  (the engine rejects rather than guess). Same-value dice (e.g. {6,6})
+       *  are interchangeable, so omission stays valid when unambiguous. */
+      dieValue?: number;
+    }
   | { type: 'RESOLVE_MOVE' }; // Director, after hop animation
 
 /**

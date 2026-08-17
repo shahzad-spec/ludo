@@ -38,7 +38,41 @@ function reject(state: GameState): ApplyResult {
 
 /** The cleared dice object (turn over / game over). A1: value alias is null. */
 function clearedDice(): GameState['dice'] {
-  return { queue: [], rolledSet: [], value: null, rolled: false, capturedInSet: false };
+  return { queue: [], rolledSet: [], value: null, rolled: false, capturedInSet: false, activeDie: null };
+}
+
+/** Legal-move groups per DISTINCT remaining die, in queue (descending) order. */
+function dieMoveGroups(state: GameState): { die: number; moves: Move[] }[] {
+  const groups: { die: number; moves: Move[] }[] = [];
+  for (const die of state.dice.queue) {
+    if (groups.some((g) => g.die === die)) continue; // same-value dice share moves
+    groups.push({ die, moves: getLegalMoves(state, die) });
+  }
+  return groups;
+}
+
+/**
+ * Present the union of legal moves across ALL remaining dice (A3.1), or burn
+ * out when nothing is playable. LAZY burn: a die with no moves of its own
+ * stays in the queue while other dice have moves (Decision 8 preserved — a
+ * dead-looking die may become playable after another die moves); ALL remaining
+ * dice burn (DIE_BURNED, k>1 only) when nothing is playable at all. At
+ * diceCount 1 this reduces exactly to the v1 behavior (no events on burn).
+ */
+function presentRemainingDice(state: GameState, events: GameEvent[]): GameState {
+  const playable = dieMoveGroups(state).filter((g) => g.moves.length > 0);
+  if (playable.length > 0) {
+    return patch(state, {
+      phase: 'SELECTING_TOKEN',
+      validMoves: playable.flatMap((g) => g.moves),
+    });
+  }
+  for (const die of state.dice.queue) {
+    if (state.rules.diceCount > 1) {
+      events.push({ type: 'DIE_BURNED', player: state.currentPlayer, value: die });
+    }
+  }
+  return patch(state, { dice: { ...state.dice, queue: [], value: null, activeDie: null } });
 }
 
 /** Shallow clone with overridden fields (immutable updates). */
@@ -53,11 +87,12 @@ function handleRequestRoll(state: GameState, rng: () => number): ApplyResult {
   if (isGameOver(state)) return reject(state);
 
   const set = rollSet(rng, state.rules.diceCount);
-  // A1 Decision 14: the queue is DESCENDING — largest die first. The rolledSet
-  // keeps draw order for UI/history; value is the compat alias onto queue[0].
+  // A1 Decision 14 (A3.1-revised): the queue is DESCENDING — the bots' default
+  // play order and tie-break. Humans choose freely (REQUEST_MOVE dieValue).
+  // rolledSet keeps draw order for UI/history; value aliases queue[0].
   const queue = [...set].sort((a, b) => b - a);
   const next = patch(state, {
-    dice: { queue, rolledSet: set, value: queue[0], rolled: true, capturedInSet: false },
+    dice: { queue, rolledSet: set, value: queue[0], rolled: true, capturedInSet: false, activeDie: null },
     phase: 'ROLLING',
   });
   return {
@@ -67,54 +102,44 @@ function handleRequestRoll(state: GameState, rng: () => number): ApplyResult {
 }
 
 /**
- * Burn unplayable dice from the head of the queue (PHASE-5D 5D-1c, Decision 4).
- * Stops when a die has legal moves (→ SELECTING_TOKEN) or the queue empties
- * (the CALLER resolves the turn). DIE_BURNED fires only at diceCount > 1 — at
- * count 1 the bare NO_LEGAL_MOVE route is byte-identical v1, so no extra event
- * may appear. Mutates `events` by push; returns the advanced state.
+ * Infer the die a Move consumes (A3.1 helper for bots/tools/search, where a
+ * chosen Move must be re-expressed as REQUEST_MOVE {tokenId, dieValue}).
+ * Non-entry: the progress delta. Entry: any entry-eligible die is
+ * effect-identical — default to the LARGEST eligible in the queue (descending
+ * default). Returns null when no eligible die remains.
  */
-function advanceQueueToPlayableDie(state: GameState, events: GameEvent[]): GameState {
-  let cur = state;
-  while (cur.dice.queue.length > 0) {
-    const head = cur.dice.queue[0];
-    const moves = getLegalMoves(cur, head);
-    if (moves.length > 0) {
-      return patch(cur, { phase: 'SELECTING_TOKEN', validMoves: moves });
+export function inferDieValue(state: GameState, move: Move): number | null {
+  const token = state.tokens[move.tokenIds[0]];
+  if (!token) return null;
+  if (move.isEnteringBoard) {
+    const eligible = (d: number): boolean => {
+      if (state.rules.entryRoll === 'any') return true;
+      if (state.rules.entryRoll === 'sixOrOne') return d === 6 || d === 1;
+      return d === 6; // 'six'
+    };
+    let best: number | null = null;
+    for (const d of state.dice.queue) {
+      if (eligible(d) && (best === null || d > best)) best = d;
     }
-    const rest = cur.dice.queue.slice(1);
-    if (cur.rules.diceCount > 1) {
-      events.push({ type: 'DIE_BURNED', player: cur.currentPlayer, value: head });
-    }
-    cur = patch(cur, {
-      dice: { ...cur.dice, queue: rest, value: rest[0] ?? null },
-    });
+    return best;
   }
-  return cur; // queue empty — caller resolves the turn
+  return move.finalProgress - token.progress;
 }
 
-function handleResolveRoll(state: GameState, value: number): ApplyResult {
+function handleResolveRoll(state: GameState, _value: number): ApplyResult {
   if (state.phase !== 'ROLLING') return reject(state);
 
-  // A1/A2.2: the queue head is authoritative for move computation. The legacy
-  // action.value is accepted for contract stability; a disagreement is a bug
-  // in the caller — warn loudly in DEV, never branch on it.
-  if (import.meta.env?.DEV && state.dice.queue.length > 0 && value !== state.dice.queue[0]) {
-    console.warn(
-      `RESOLVE_ROLL value (${value}) !== queue head (${state.dice.queue[0]}) — the queue is authoritative.`,
-    );
-  }
-
   const events: GameEvent[] = [];
-  const afterBurns = advanceQueueToPlayableDie(state, events);
-  if (afterBurns.phase === 'SELECTING_TOKEN') {
-    return { state: afterBurns, events };
+  const presented = presentRemainingDice(state, events);
+  if (presented.phase === 'SELECTING_TOKEN') {
+    return { state: presented, events };
   }
 
   // The set fully burned with no move played → the v1 NO_LEGAL_MOVE route,
   // byte-identical at diceCount 1, with set-aware six-counting (A3.2): an
   // extra turn requires ALL dice to show six (any-six snowballed 2-dice games).
   const allSixes = state.dice.rolledSet.every((d) => d === 6);
-  const firstHead = state.dice.queue[0] ?? value;
+  const firstHead = state.dice.queue[0] ?? _value;
   const advanced = resolveTurn(
     state,
     allSixes,
@@ -139,17 +164,45 @@ function handleResolveRoll(state: GameState, value: number): ApplyResult {
   return { state: next, events };
 }
 
-function pickMove(state: GameState, tokenId: string): Move | null {
-  return state.validMoves.find((m) => m.tokenIds.includes(tokenId)) ?? null;
-}
-
 function handleRequestMove(
   state: GameState,
   tokenId: string,
+  dieValue?: number,
 ): ApplyResult {
   if (state.phase !== 'SELECTING_TOKEN') return reject(state);
-  const move = pickMove(state, tokenId);
-  if (!move) return reject(state); // not a legal selection
+
+  // A3.1: resolve by (tokenId, dieValue) against the presented menu. Each
+  // candidate's die is its progress delta (the menu was built per-die, so the
+  // delta identifies the die); entry moves are die-ambiguous but
+  // effect-identical — any entry-eligible die matches, and the named die is
+  // the one consumed (the player chose that pip).
+  const token = state.tokens[tokenId];
+  const candidates = state.validMoves.filter((m) => m.tokenIds.includes(tokenId));
+  if (!token || candidates.length === 0) return reject(state); // not a legal selection
+
+  const entryOk = (d: number): boolean => {
+    if (state.rules.entryRoll === 'any') return true;
+    if (state.rules.entryRoll === 'sixOrOne') return d === 6 || d === 1;
+    return d === 6;
+  };
+  const dieOf = (m: Move): number | null =>
+    m.isEnteringBoard
+      ? (state.dice.queue.filter(entryOk).sort((a, b) => b - a)[0] ?? null)
+      : m.finalProgress - token.progress;
+
+  let pick: Move;
+  if (dieValue !== undefined) {
+    pick = candidates.find((m) =>
+      m.isEnteringBoard ? entryOk(dieValue) : dieOf(m) === dieValue,
+    )!;
+    if (!pick) return reject(state); // that die cannot move this token
+  } else {
+    const distinctDies = new Set(candidates.map((m) => dieOf(m)));
+    if (distinctDies.size > 1) return reject(state); // ambiguous — no guessing (A3.1)
+    pick = candidates[0]; // unambiguous (or same-value dice — interchangeable)
+  }
+  const die = dieValue ?? dieOf(pick);
+  const move = pick;
 
   // Freeze the chosen move and lock the phase. We emit TOKEN_MOVED HERE (with
   // the path) so the Director can start the hop animation. The token's progress
@@ -159,6 +212,7 @@ function handleRequestMove(
   const next = patch(state, {
     phase: 'ANIMATING_MOVE',
     validMoves: [{ ...move }], // freeze the single chosen move
+    dice: { ...state.dice, activeDie: die }, // carried for RESOLVE_MOVE (A3.1)
   });
   return {
     state: next,
@@ -200,14 +254,19 @@ function handleResolveMove(state: GameState): ApplyResult {
     captureIds.push(result.victim.id);
   }
 
-  // 5D-1d: consume the played head die; accumulate the set-capture flag (A2.1).
-  const diePlayed = state.dice.queue[0] ?? state.dice.value ?? 0;
-  const remaining = state.dice.queue.slice(1);
+  // A3.1: consume the die chosen at REQUEST_MOVE (activeDie — entry moves
+  // cannot be re-inferred post-hoc). Fallback = queue head (v1 safety net).
+  const diePlayed = state.dice.activeDie ?? state.dice.queue[0] ?? state.dice.value ?? 0;
+  const remaining = [...state.dice.queue];
+  const consumedIdx = remaining.indexOf(diePlayed);
+  if (consumedIdx >= 0) remaining.splice(consumedIdx, 1);
+  else remaining.shift();
   const diceAfterDie: GameState['dice'] = {
     ...state.dice,
     queue: remaining,
     value: remaining[0] ?? null,
     capturedInSet: state.dice.capturedInSet || captured,
+    activeDie: null,
   };
   const record: TurnRecord = {
     player: mover.color,
@@ -235,17 +294,18 @@ function handleResolveMove(state: GameState): ApplyResult {
     return { state: next, events };
   }
 
-  // 4a. Set continues: burn dead dice; a playable die re-enters SELECTING_TOKEN.
+  // 4a. Set continues: present the remaining dice (lazy burn inside); a
+  // playable die re-enters SELECTING_TOKEN with the union menu (A3.1).
   if (remaining.length > 0) {
-    const afterBurns = advanceQueueToPlayableDie(movedState, events);
-    if (afterBurns.phase === 'SELECTING_TOKEN') {
+    const presented = presentRemainingDice(movedState, events);
+    if (presented.phase === 'SELECTING_TOKEN') {
       return {
-        state: patch(afterBurns, { turnHistory: [...state.turnHistory, record] }),
+        state: patch(presented, { turnHistory: [...state.turnHistory, record] }),
         events,
       };
     }
-    // Burns emptied the queue → end of set on the burned state.
-    return endOfSet(afterBurns, state, record, events);
+    // Nothing playable remained → burns emptied the queue → end of set.
+    return endOfSet(presented, state, record, events);
   }
 
   // 4b. Queue empty → end-of-set resolution (Decisions 5/6).
@@ -300,7 +360,7 @@ export function applyAction(
     case 'RESOLVE_ROLL':
       return handleResolveRoll(state, action.value);
     case 'REQUEST_MOVE':
-      return handleRequestMove(state, action.tokenId);
+      return handleRequestMove(state, action.tokenId, action.dieValue);
     case 'RESOLVE_MOVE':
       return handleResolveMove(state);
   }

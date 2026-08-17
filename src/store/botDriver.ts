@@ -14,6 +14,7 @@
 import { useEffect, useRef } from 'react';
 import { useGame } from './useGame';
 import { chooseBotMove, type BotDifficulty } from '../oracle/ai';
+import { inferDieValue } from '../oracle/engine';
 
 /** Current bot difficulty. Set by the UI before starting a bot game. */
 let botDifficulty: BotDifficulty = 'medium';
@@ -63,7 +64,12 @@ export function BotDriver() {
       timerRef.current = setTimeout(() => {
         const move = chooseBotMove(state, validMoves, botDifficulty);
         if (move) {
-          dispatch({ type: 'REQUEST_MOVE', tokenId: move.tokenIds[0] });
+          // A3.1: name the die (the union menu can hold two moves per token).
+          dispatch({
+            type: 'REQUEST_MOVE',
+            tokenId: move.tokenIds[0],
+            dieValue: inferDieValue(state, move) ?? undefined,
+          });
         }
       }, moveDelay);
     }

@@ -24,7 +24,7 @@
 import type { GameState, Move } from '../types';
 import type { Color } from '../board/track';
 import type { SearchOptions } from './types';
-import { applyAction } from '../engine';
+import { applyAction, inferDieValue } from '../engine';
 import { evaluate } from './evaluate';
 import { diceOutcomes } from './diceMath';
 
@@ -63,9 +63,15 @@ export function getTTStatsForTesting(): {
  */
 function simulate(state: GameState, move: Move | null): GameState {
   if (move === null) return state;
-  // Filter validMoves to just this specific move so pickMove finds the right one
+  // A3.1: resolve by (tokenId, dieValue) — a union menu can hold two moves for
+  // the same token (one per die), so the chosen move must name its die.
+  const dieValue = inferDieValue(state, move) ?? undefined;
   const filteredState: GameState = { ...state, validMoves: [move] };
-  const r1 = applyAction(filteredState, { type: 'REQUEST_MOVE', tokenId: move.tokenIds[0] });
+  const r1 = applyAction(filteredState, {
+    type: 'REQUEST_MOVE',
+    tokenId: move.tokenIds[0],
+    dieValue,
+  });
   const r2 = applyAction(r1.state, { type: 'RESOLVE_MOVE' });
   return r2.state;
 }
@@ -107,11 +113,14 @@ function simulateRollSet(state: GameState, dice: number[]): GameState {
   return r2.state;
 }
 
-/** TT key: full token-progress signature + current player + phase + depth + extensions. */
+/** TT key: token-progress signature + current player + phase + depth +
+ *  extensions + REMAINING QUEUE (A3.1: two states with identical tokens can
+ *  differ by which dice remain — without the queue in the key, the TT would
+ *  silently conflate them). */
 function ttKey(state: GameState, depth: number, extensions: number): string {
   let sig = '';
   for (const tok of Object.values(state.tokens)) sig += `${tok.progress},`;
-  return `${sig}${state.currentPlayer}|${state.phase}|${depth}|${extensions}`;
+  return `${sig}${state.currentPlayer}|${state.phase}|${state.dice.queue.join(',')}|${depth}|${extensions}`;
 }
 
 /**
