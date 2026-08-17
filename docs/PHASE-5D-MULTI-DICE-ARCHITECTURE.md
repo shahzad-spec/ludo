@@ -341,3 +341,25 @@ frozen; v1 at `diceCount: 1` must remain byte-identical in behavior.
 - [ ] Games measurably faster: bench mean turns at diceCount 2 < diceCount 1.
 - [ ] Stall-guard green per diceCount (no F-1 recurrence).
 - [ ] User sign-off on the 5D-6 checklist.
+
+---
+
+## 11. Playtest finding PD-1 — dice-2 capture judgment (2026-08-18)
+
+**Observation (user, x2 game):** "a confirmed token capture was ignored — one
+token could easily capture the opponent's token, but they could not see it or
+ignored it."
+
+**Diagnosis — JUDGMENT, not vision (fixture-verified):** the committed vision
+check (`dice2Capture.test.ts`, `5512943`) proves the union menu presents the
+capture and Medium/Hard/Pro all take a capture with zero retaliation risk.
+What the playtest saw was the dice-2 *threat geometry* doing its job: every
+opponent now threatens up to 12 cells with prefix-landing odds, and Pro's
+paranoid model + exposure weighting declines captures whose landing it prices
+as recapturable. When that price is wrong, it is a weights problem, not a
+mechanism problem.
+
+**Disposition:** dice-2 weight tuning — backlog with evidence (the design's
+own trigger: "tune only if playtest evidence demands it"; the evidence now
+exists). Harness supports `--dice 2`. Not merge-blocking: the mechanism is
+proven sound and the fixture guards it permanently.
