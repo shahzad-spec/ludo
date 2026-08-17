@@ -16,6 +16,7 @@ import { BotDriver, setBotDifficulty } from './store/botDriver';
 import { useGame } from './store/useGame';
 import { soloRules } from './oracle/config/rulesPreset';
 import { useAudio } from './store/audioStore';
+import { useUI } from './store/uiStore';
 
 function isDebug(): boolean {
   return (
@@ -70,6 +71,14 @@ function ControlBar() {
   const pips = [...rolledSet].sort((a, b) => b - a);
   const playedCount = rolledSet.length > 0 ? rolledSet.length - queueLength : 0;
 
+  // A3.1 (5D-7c): during multi-die selection the pips are the die CHOOSER —
+  // tap a pip, then tap a token. Selection is per-die-value (same-value dice
+  // are interchangeable). Clicking the picked pip again clears the choice.
+  const selectedDie = useUI((s) => s.selectedDie);
+  const selectDie = useUI((s) => s.selectDie);
+  const chooserActive = phase === 'SELECTING_TOKEN' && diceCount > 1 && queueLength > 0;
+  const effectiveDie = selectedDie !== null && chooserActive ? selectedDie : null;
+
   const isBotTurn = rules.bots.includes(currentPlayer);
   const canRoll = phase === 'IDLE' && !isBotTurn;
 
@@ -94,13 +103,34 @@ function ControlBar() {
       <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{currentPlayer}</span>
       <span style={{ opacity: 0.6 }}>{phase}</span>
       {rolledSet.length > 0 ? (
-        <span title="Remaining dice this set (dimmed = played/burned)" style={{ fontWeight: 700 }}>
-          🎲{' '}
-          {pips.map((v, i) => (
-            <span key={i} style={{ opacity: i < playedCount ? 0.3 : 1 }}>
-              {i > 0 ? ' ' : ''}{v}
-            </span>
-          ))}
+        <span title="Remaining dice this set (dimmed = played/burned). During selection, tap a die then a token." style={{ fontWeight: 700, display: 'flex', gap: 3, alignItems: 'center' }}>
+          🎲
+          {pips.map((v, i) => {
+            const consumed = i < playedCount;
+            const picked = effectiveDie === v && !consumed;
+            if (!chooserActive || consumed) {
+              return (
+                <span key={i} style={{ opacity: consumed ? 0.3 : 1 }}>
+                  {v}
+                </span>
+              );
+            }
+            return (
+              <button
+                key={i}
+                onClick={() => selectDie(picked ? null : v)}
+                style={{
+                  ...btn(true),
+                  padding: '2px 7px',
+                  background: picked ? '#4a9' : '#666',
+                  textDecoration: 'none',
+                }}
+                title={`Play the ${v} next — tap a token after picking`}
+              >
+                {v}
+              </button>
+            );
+          })}
         </span>
       ) : (
         diceValue !== null && <span style={{ fontWeight: 700 }}>🎲 {diceValue}</span>

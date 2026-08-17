@@ -50,8 +50,10 @@ export function Token({ tokenId }: { tokenId: string }) {
   const phase = useGame((s) => s.state.phase);
   const validMoves = useGame((s) => s.state.validMoves);
   const allTokens = useGame((s) => s.state.tokens);
+  const diceQueue = useGame((s) => s.state.dice.queue);
   const selectedTokenId = useUI((s) => s.selectedTokenId);
   const select = useUI((s) => s.select);
+  const selectedDie = useUI((s) => s.selectedDie);
   const ref = useRef<Group>(null);
 
   // Animation flags — when true, GSAP controls position; React stays out.
@@ -250,7 +252,10 @@ export function Token({ tokenId }: { tokenId: string }) {
     if (phase !== 'SELECTING_TOKEN') return;
     if (!isMovable) return;
     if (isSelected) {
-      dispatch({ type: 'REQUEST_MOVE', tokenId });
+      // A3.1: if the player picked a die pip, name it; otherwise let the engine
+      // resolve (unambiguous only — ambiguous needs a pip choice).
+      const picked = selectedDie !== null && diceQueue.includes(selectedDie) ? selectedDie : undefined;
+      dispatch({ type: 'REQUEST_MOVE', tokenId, dieValue: picked });
     } else {
       select(tokenId);
     }

@@ -13,9 +13,15 @@ import { create } from 'zustand';
 interface UIStore {
   selectedTokenId: string | null;
   select: (tokenId: string | null) => void;
+  /** A3.1 (5D-7c): the die the player picked from the remaining pips.
+   *  Null = no preference — the engine resolves unambiguous tokens directly. */
+  selectedDie: number | null;
+  selectDie: (die: number | null) => void;
 }
 
 export const useUI = create<UIStore>((set) => ({
   selectedTokenId: null,
   select: (tokenId) => set({ selectedTokenId: tokenId }),
+  selectedDie: null,
+  selectDie: (die) => set({ selectedDie: die }),
 }));
