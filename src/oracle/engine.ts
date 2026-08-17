@@ -111,15 +111,15 @@ function handleResolveRoll(state: GameState, value: number): ApplyResult {
   }
 
   // The set fully burned with no move played → the v1 NO_LEGAL_MOVE route,
-  // byte-identical at diceCount 1, with set-aware six-counting (Decision 5):
-  // ANY six in the rolled set counts, exactly once.
-  const setHasSix = state.dice.rolledSet.includes(6);
+  // byte-identical at diceCount 1, with set-aware six-counting (A3.2): an
+  // extra turn requires ALL dice to show six (any-six snowballed 2-dice games).
+  const allSixes = state.dice.rolledSet.every((d) => d === 6);
   const firstHead = state.dice.queue[0] ?? value;
   const advanced = resolveTurn(
     state,
-    setHasSix,
+    allSixes,
     false, // no capture
-    setHasSix ? state.consecutiveSixes + 1 : 0,
+    allSixes ? state.consecutiveSixes + 1 : 0,
   );
   const next = patch(state, {
     phase: 'IDLE',
@@ -253,12 +253,12 @@ function handleResolveMove(state: GameState): ApplyResult {
 }
 
 /**
- * End-of-set turn resolution (PHASE-5D 5D-1d). Six-counting is per SET
- * (rolledSet.includes(6) — a double-6 increments once, Decision 5); capture is
- * per SET (capturedInSet, Decision 6). State transitions are v1-identical at
- * diceCount 1. The announce-on-keep emission (extraTurn: true) is the one
- * intentional event-stream addition (design §3.4) — v1 emitted nothing when a
- * player kept their turn.
+ * End-of-set turn resolution (PHASE-5D 5D-1d, A3.2). Six-counting is per SET
+ * and requires ALL dice six (rolledSet.every(d => d === 6) — a double-6 set
+ * increments once; a single 6 grants nothing; at diceCount 1 every ≡ includes);
+ * capture is per SET (capturedInSet, Decision 6). State transitions are
+ * v1-identical at diceCount 1. The announce-on-keep emission (extraTurn: true)
+ * is the one intentional event-stream addition (design §3.4).
  */
 function endOfSet(
   movedState: GameState,
@@ -266,10 +266,10 @@ function endOfSet(
   record: TurnRecord,
   events: GameEvent[],
 ): ApplyResult {
-  const rolledSix = preMoveState.dice.rolledSet.includes(6);
+  const allSixes = preMoveState.dice.rolledSet.every((d) => d === 6);
   const setCaptured = movedState.dice.capturedInSet;
-  const newConsecutiveSixes = rolledSix ? preMoveState.consecutiveSixes + 1 : 0;
-  const turn = resolveTurn(preMoveState, rolledSix, setCaptured, newConsecutiveSixes);
+  const newConsecutiveSixes = allSixes ? preMoveState.consecutiveSixes + 1 : 0;
+  const turn = resolveTurn(preMoveState, allSixes, setCaptured, newConsecutiveSixes);
 
   const next = patch(movedState, {
     phase: 'IDLE',

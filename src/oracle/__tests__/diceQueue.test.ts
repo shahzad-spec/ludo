@@ -198,7 +198,7 @@ describe('RESOLVE_ROLL + burn-loop (5D-1c)', () => {
     expectDiceInvariants(res.state);
   });
 
-  it('a six in a FULLY BURNED set still counts (extra turn granted, count reset)', () => {
+  it('a single six in a fully burned set does NOT keep the turn (A3.2)', () => {
     // All red at p54: every die 2..6 overshoots; the rolled 6 burned but the
     // SET contains it → sixGrantsExtraTurn keeps the turn (Decision 5), with
     // consecutiveSixes reset by the v1 pass route.
@@ -213,15 +213,15 @@ describe('RESOLVE_ROLL + burn-loop (5D-1c)', () => {
       twoDice,
     );
     const res = applyAction(state, { type: 'RESOLVE_ROLL', value: 6 });
-    // 5D-2 (ruling 2): a burned six-keep ANNOUNCES at diceCount > 1
-    // (consistency with played-set keeps); count 1 stays silent (equivalence).
+    // A3.2: the burned set [6,3] is not all-sixes → NO extra turn; the turn
+    // passes (plain TURN_CHANGED — the announce only fires on all-six keeps).
     expect(res.events).toEqual([
       { type: 'DIE_BURNED', player: 'red', value: 6 },
       { type: 'DIE_BURNED', player: 'red', value: 3 },
       { type: 'NO_LEGAL_MOVE', player: 'red', value: 6 },
-      { type: 'TURN_CHANGED', nextPlayer: 'red', extraTurn: true },
+      { type: 'TURN_CHANGED', nextPlayer: 'green' },
     ]);
-    expect(res.state.currentPlayer).toBe('red'); // extra turn — the set had a 6
+    expect(res.state.currentPlayer).toBe('green');
     expect(res.state.consecutiveSixes).toBe(0); // v1 pass route resets
     expectDiceInvariants(res.state);
   });
@@ -276,8 +276,9 @@ describe('per-die RESOLVE_MOVE + end-of-set (5D-1d)', () => {
     expect(s.phase).toBe('SELECTING_TOKEN'); // die 2 awaits
     s = playDie(s, 'red-0').state; // 3: p16 -> 19
     expect(s.phase).toBe('IDLE');
-    expect(s.currentPlayer).toBe('red'); // set contained a 6 (Decision 5)
-    expect(s.consecutiveSixes).toBe(1);
+    // A3.2: a SINGLE six in the set no longer grants the extra turn — turn passes.
+    expect(s.currentPlayer).toBe('green');
+    expect(s.consecutiveSixes).toBe(0);
     expectDiceInvariants(s);
     const recs = s.turnHistory.slice(-2);
     expect(recs[0]).toMatchObject({ player: 'red', roll: 6, rolls: [3, 6] });
@@ -337,7 +338,7 @@ describe('per-die RESOLVE_MOVE + end-of-set (5D-1d)', () => {
     expect(s.dice.queue).toEqual([3]);
   });
 
-  it('burns a dead second die after a move; the burned six still grants the extra turn', () => {
+  it('burns a dead second die after a move; a single six does NOT keep the turn (A3.2)', () => {
     // red-0 p48 (+6=54 legal); everyone at p54 afterwards → the 3 is dead.
     let s = rolled(
       {
@@ -350,13 +351,14 @@ describe('per-die RESOLVE_MOVE + end-of-set (5D-1d)', () => {
     );
     s = applyAction(s, { type: 'RESOLVE_ROLL', value: 6 }).state;
     const res = playDie(s, 'red-0'); // 6 -> 54, then the 3 burns
+    // A3.2: the set was [3,6] — not all sixes → NO extra turn, turn passes.
     expect(res.events).toEqual([
       { type: 'DIE_BURNED', player: 'red', value: 3 },
-      { type: 'TURN_CHANGED', nextPlayer: 'red', extraTurn: true },
+      { type: 'TURN_CHANGED', nextPlayer: 'green' },
     ]);
     expect(res.state.phase).toBe('IDLE');
-    expect(res.state.currentPlayer).toBe('red');
-    expect(res.state.consecutiveSixes).toBe(1);
+    expect(res.state.currentPlayer).toBe('green');
+    expect(res.state.consecutiveSixes).toBe(0);
     expectDiceInvariants(res.state);
   });
 
@@ -410,5 +412,52 @@ describe('burned six-keep announce (5D-2 ruling 2)', () => {
     const res = applyAction(state, { type: 'RESOLVE_ROLL', value: 6 });
     expect(res.events).toEqual([{ type: 'NO_LEGAL_MOVE', player: 'red', value: 6 }]);
     expect(res.state.currentPlayer).toBe('red'); // six kept the turn, silently
+  });
+});
+
+describe('A3.2 — ALL-six extra turns (5D-7a)', () => {
+  const twoDice = { ...V1_RULES, diceCount: 2 as const };
+
+  it('the playtest case: [6,4] set → NO re-roll', () => {
+    let s = stateWithPlacements(
+      { 'red-0': { color: 'red', progress: 10 } },
+      { currentPlayer: 'red', rules: twoDice },
+    );
+    s = applyAction(s, { type: 'REQUEST_ROLL' }, pinnedRng([6, 4])).state;
+    expect(s.dice.queue).toEqual([6, 4]);
+    s = applyAction(s, { type: 'RESOLVE_ROLL', value: 6 }).state;
+    s = playDie(s, 'red-0').state; // 6 -> 16
+    s = playDie(s, 'red-0').state; // 4 -> 20
+    expect(s.phase).toBe('IDLE');
+    expect(s.currentPlayer).toBe('green'); // single 6 — no extra turn
+    expect(s.consecutiveSixes).toBe(0);
+  });
+
+  it('[6,6] → exactly ONE extra turn, consecutiveSixes +1', () => {
+    let s = stateWithPlacements(
+      { 'red-0': { color: 'red', progress: 10 } },
+      { currentPlayer: 'red', rules: twoDice },
+    );
+    s = applyAction(s, { type: 'REQUEST_ROLL' }, pinnedRng([6, 6])).state;
+    s = applyAction(s, { type: 'RESOLVE_ROLL', value: 6 }).state;
+    s = playDie(s, 'red-0').state;
+    s = playDie(s, 'red-0').state;
+    expect(s.currentPlayer).toBe('red');
+    expect(s.consecutiveSixes).toBe(1);
+  });
+
+  it('[6,6,6] at three dice → one extra turn', () => {
+    const three = { ...V1_RULES, diceCount: 3 as const };
+    let s = stateWithPlacements(
+      { 'red-0': { color: 'red', progress: 10 } },
+      { currentPlayer: 'red', rules: three },
+    );
+    s = applyAction(s, { type: 'REQUEST_ROLL' }, pinnedRng([6, 6, 6])).state;
+    s = applyAction(s, { type: 'RESOLVE_ROLL', value: 6 }).state;
+    s = playDie(s, 'red-0').state;
+    s = playDie(s, 'red-0').state;
+    s = playDie(s, 'red-0').state;
+    expect(s.currentPlayer).toBe('red');
+    expect(s.consecutiveSixes).toBe(1);
   });
 });
