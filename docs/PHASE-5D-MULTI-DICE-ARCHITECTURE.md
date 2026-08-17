@@ -340,7 +340,7 @@ frozen; v1 at `diceCount: 1` must remain byte-identical in behavior.
       real game (playtest evidence, recorded).
 - [ ] Games measurably faster: bench mean turns at diceCount 2 < diceCount 1.
 - [ ] Stall-guard green per diceCount (no F-1 recurrence).
-- [ ] User sign-off on the 5D-6 checklist.
+- [ ] User sign-off on the 5D-6 checklist. — **✅ SIGNED OFF 2026-08-18**; merged to `main` (`6c067a9`); PD-1 logged as dice-2 tuning backlog
 
 ---
 

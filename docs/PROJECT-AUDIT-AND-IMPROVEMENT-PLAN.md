@@ -94,6 +94,19 @@ starts until build + lint + tests are green again.
 > must never outbid a real capture*). User sign-off given 2026-08-16.
 > **Next:** multi-dice mode design doc (user-driven feature; overturns R&S
 > §6.2 "likely never"), then the v1 polish/ship pass (WS-2/3/4) resumes.
+>
+> **Update 8 (2026-08-18, PHASE 5D CLOSED — signed off & merged):** Multi-dice
+> mode shipped to `main` (`ec4a8ad..6c067a9`, 32 files, +1,967 lines; 390
+> tests, lint + build green). Sequential-dice queue inside the existing phase
+> machine; v1 byte-identical at `diceCount: 1` (equivalence battery);
+> prefix-landing threat model; dice-aware bot bands + 21-outcome multiset
+> search; games ~30% faster at ×2. Two user amendments during playtest
+> (A3.1 player-chosen die order, A3.2 all-six extra turns) implemented as
+> 5D-7. Playtest finding **PD-1** (dice-2 capture judgment) diagnosed as
+> balance-not-bug via the committed vision fixture → dice-2 tuning backlog.
+> **Next per user direction: full Stage layer (WS-2 — menus, setup,
+> schema-driven settings, HUD) then Phase 6 LAN team play; internet play
+> after. PD-1 tuning scheduled around those.**
 
 ---
 
